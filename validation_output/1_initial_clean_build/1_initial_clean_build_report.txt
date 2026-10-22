@@ -1,0 +1,80 @@
+================================================================================
+CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
+================================================================================
+
+## 1. SESSION INFORMATION
+  Run ID:              20261022T210340196Z-2d7fb4ccd59fa485
+  Timestamp:           2026-10-22T21:03:40.21395247Z
+  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /home/brandybuck/Code/Cargo-build-trace/test_workspace/Cargo.toml -Zbuild-analysis
+  Working Directory:   /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Workspace Root:      /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Target Directory:    /home/brandybuck/Code/Cargo-build-trace/test_workspace/target
+  Host Platform:       x86_64-unknown-linux-gnu
+  Profile:             dev
+  Jobs (-j):           12
+  Available CPUs:      12
+  Rustc Version:       1.99.0
+  Unit Graph Time:     0.0494s
+
+## 2. UNITS SUMMARY
+  Total Registered Units: 6
+  - Fresh (Cached):       0
+  - Dirty (Rebuilding):   0
+  - New (First Build):    6
+  - Units Executed:       6
+
+  Detailed Unit Status Table:
+  Idx   Unit Name                    Kind       Status   Start (s)   Rmeta (s)   Finish (s)  Duration  
+  ----------------------------------------------------------------------------------------------------
+  0     cli_app v0.1.0 (cli_app:bi   bin        new      0.166       -           0.242       0.076s    
+  1     core_util v0.1.0             lib        new      0.051       0.080       0.105       0.054s    
+  2     leaf_tool v0.1.0 (leaf_too   bin        new      0.166       -           0.242       0.076s    
+  3     math_engine v0.1.0           lib        new      0.080       0.121       0.163       0.083s    
+  4     orchestrator v0.1.0          lib        new      0.122       0.155       0.163       0.041s    
+  5     string_parser v0.1.0         lib        new      0.080       0.122       0.166       0.086s    
+
+## 3. REBUILD REASON ATTRIBUTION CHAINS
+  * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=new [AMBIGUOUS]:
+      Causal Chain: unit 0 (cli_app)
+      Root Invalidation Cause: fresh build (no previous artifact)
+      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: orchestrator v0.1.0
+  * Unit 1 [core_util v0.1.0] status=new:
+      Causal Chain: unit 1 (core_util)
+      Root Invalidation Cause: fresh build (no previous artifact)
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=new [AMBIGUOUS]:
+      Causal Chain: unit 2 (leaf_tool)
+      Root Invalidation Cause: fresh build (no previous artifact)
+      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: string_parser v0.1.0
+  * Unit 3 [math_engine v0.1.0] status=new [AMBIGUOUS]:
+      Causal Chain: unit 3 (math_engine)
+      Root Invalidation Cause: fresh build (no previous artifact)
+      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: core_util v0.1.0
+  * Unit 4 [orchestrator v0.1.0] status=new [AMBIGUOUS]:
+      Causal Chain: unit 4 (orchestrator)
+      Root Invalidation Cause: fresh build (no previous artifact)
+      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: math_engine v0.1.0, string_parser v0.1.0
+  * Unit 5 [string_parser v0.1.0] status=new [AMBIGUOUS]:
+      Causal Chain: unit 5 (string_parser)
+      Root Invalidation Cause: fresh build (no previous artifact)
+      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: core_util v0.1.0
+
+## 4. OBSERVED EXECUTION CRITICAL PATH
+  Terminal Target Unit: cli_app v0.1.0 (cli_app:bin) (index 0)
+
+  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Wait Gap   Unblocked By
+  ---------------------------------------------------------------------------------------------------------
+  1     core_util v0.1.0             rmeta    0.051      0.080      0.029     s 0.002    s DAG root / initial
+        Note: DAG root (no dependencies in unit graph)
+  2     string_parser v0.1.0         finish   0.080      0.166      0.086     s 0.000    s unit 1 (rmeta @ 0.080s)
+  3     cli_app v0.1.0 (cli_app:bi   finish   0.166      0.242      0.076     s 0.000    s unit 5 (finish @ 0.166s)
+
+## 5. TIMING AND CRITICAL-PATH BUDGET
+  Total Observed Critical Path Duration: 0.1929s
+  - Active Unit Execution on Path:        0.1910s (99.0%)
+  - Unexplained Scheduler Gaps on Path:   0.0019s (1.0%)
+    (Initial Queue Delay before 1st unit: 0.0016s)
+
+## 6. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler gaps cannot be definitively assigned to job token starvation vs OS delay.
+
+================================================================================

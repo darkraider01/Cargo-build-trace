@@ -1,0 +1,72 @@
+================================================================================
+CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
+================================================================================
+
+## 1. SESSION INFORMATION
+  Run ID:              20261022T210340703Z-2d7fb4ccd59fa485
+  Timestamp:           2026-10-22T21:03:40.717814981Z
+  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /home/brandybuck/Code/Cargo-build-trace/test_workspace/Cargo.toml -Zbuild-analysis
+  Working Directory:   /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Workspace Root:      /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Target Directory:    /home/brandybuck/Code/Cargo-build-trace/test_workspace/target
+  Host Platform:       x86_64-unknown-linux-gnu
+  Profile:             dev
+  Jobs (-j):           12
+  Available CPUs:      12
+  Rustc Version:       1.99.0
+  Unit Graph Time:     0.0150s
+
+## 2. UNITS SUMMARY
+  Total Registered Units: 6
+  - Fresh (Cached):       2
+  - Dirty (Rebuilding):   4
+  - New (First Build):    0
+  - Units Executed:       4
+
+  Detailed Unit Status Table:
+  Idx   Unit Name                    Kind       Status   Start (s)   Rmeta (s)   Finish (s)  Duration  
+  ----------------------------------------------------------------------------------------------------
+  0     cli_app v0.1.0 (cli_app:bi   bin        dirty    0.078       -           0.162       0.084s    
+  1     core_util v0.1.0             lib        fresh    -           -           -           -         
+  2     leaf_tool v0.1.0 (leaf_too   bin        dirty    0.063       -           0.153       0.090s    
+  3     math_engine v0.1.0           lib        fresh    -           -           -           -         
+  4     orchestrator v0.1.0          lib        dirty    0.049       0.073       0.078       0.029s    
+  5     string_parser v0.1.0         lib        dirty    0.016       0.049       0.063       0.047s    
+
+## 3. REBUILD REASON ATTRIBUTION CHAINS
+  * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=dirty:
+      Causal Chain: unit 0 (cli_app) -> unit 4 (orchestrator) -> unit 5 (string_parser)
+      Root Invalidation Cause: filesystem input modified
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=dirty:
+      Causal Chain: unit 2 (leaf_tool) -> unit 5 (string_parser)
+      Root Invalidation Cause: filesystem input modified
+  * Unit 4 [orchestrator v0.1.0] status=dirty:
+      Causal Chain: unit 4 (orchestrator) -> unit 5 (string_parser)
+      Root Invalidation Cause: filesystem input modified
+  * Unit 5 [string_parser v0.1.0] status=dirty:
+      Causal Chain: unit 5 (string_parser)
+      Root Invalidation Cause: filesystem input modified
+
+## 4. OBSERVED EXECUTION CRITICAL PATH
+  Terminal Target Unit: cli_app v0.1.0 (cli_app:bin) (index 0)
+
+  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Wait Gap   Unblocked By
+  ---------------------------------------------------------------------------------------------------------
+  1     string_parser v0.1.0         rmeta    0.016      0.049      0.032     s 0.001    s DAG root / initial
+        Note: Unblocked by fresh dependencies (Cargo does not log unblock events for fresh units)
+  2     orchestrator v0.1.0          finish   0.049      0.078      0.029     s 0.000    s unit 5 (rmeta @ 0.049s)
+  3     cli_app v0.1.0 (cli_app:bi   finish   0.078      0.162      0.084     s 0.000    s unit 4 (finish @ 0.078s)
+
+## 5. TIMING AND CRITICAL-PATH BUDGET
+  Total Observed Critical Path Duration: 0.1468s
+  - Active Unit Execution on Path:        0.1449s (98.7%)
+  - Unexplained Scheduler Gaps on Path:   0.0019s (1.3%)
+    (Initial Queue Delay before 1st unit: 0.0015s)
+
+## 6. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * 2 units were fresh (cached). Cargo emits no start or finish events for fresh units, making their fingerprint verification time unmeasurable from log events alone.
+  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler gaps cannot be definitively assigned to job token starvation vs OS delay.
+  * Unit string_parser v0.1.0 (index 5) started at 0.016s but has no unblocking event in the log. Upstream dependencies were omitted from unblocking telemetry.
+  * Unit string_parser v0.1.0 (index 5) was unblocked by fresh dependency units ['core_util'], but Cargo's log does not emit unblock events for fresh units.
+
+================================================================================

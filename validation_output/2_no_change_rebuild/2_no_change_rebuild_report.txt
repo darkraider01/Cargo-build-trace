@@ -1,0 +1,53 @@
+================================================================================
+CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
+================================================================================
+
+## 1. SESSION INFORMATION
+  Run ID:              20261022T210340495Z-2d7fb4ccd59fa485
+  Timestamp:           2026-10-22T21:03:40.50473989Z
+  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /home/brandybuck/Code/Cargo-build-trace/test_workspace/Cargo.toml -Zbuild-analysis
+  Working Directory:   /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Workspace Root:      /home/brandybuck/Code/Cargo-build-trace/test_workspace
+  Target Directory:    /home/brandybuck/Code/Cargo-build-trace/test_workspace/target
+  Host Platform:       x86_64-unknown-linux-gnu
+  Profile:             dev
+  Jobs (-j):           12
+  Available CPUs:      12
+  Rustc Version:       1.99.0
+  Unit Graph Time:     0.0107s
+
+## 2. UNITS SUMMARY
+  Total Registered Units: 6
+  - Fresh (Cached):       6
+  - Dirty (Rebuilding):   0
+  - New (First Build):    0
+  - Units Executed:       0
+
+  Detailed Unit Status Table:
+  Idx   Unit Name                    Kind       Status   Start (s)   Rmeta (s)   Finish (s)  Duration  
+  ----------------------------------------------------------------------------------------------------
+  0     cli_app v0.1.0 (cli_app:bi   bin        fresh    -           -           -           -         
+  1     core_util v0.1.0             lib        fresh    -           -           -           -         
+  2     leaf_tool v0.1.0 (leaf_too   bin        fresh    -           -           -           -         
+  3     math_engine v0.1.0           lib        fresh    -           -           -           -         
+  4     orchestrator v0.1.0          lib        fresh    -           -           -           -         
+  5     string_parser v0.1.0         lib        fresh    -           -           -           -         
+
+## 3. REBUILD REASON ATTRIBUTION CHAINS
+  No rebuilt units (all units fresh / up-to-date).
+
+## 4. OBSERVED EXECUTION CRITICAL PATH
+  No critical path reconstructed.
+
+## 5. TIMING AND CRITICAL-PATH BUDGET
+  Total Observed Critical Path Duration: 0.0000s
+  - Active Unit Execution on Path:        0.0000s (0.0%)
+  - Unexplained Scheduler Gaps on Path:   0.0000s (0.0%)
+    (Initial Queue Delay before 1st unit: 0.0000s)
+
+## 6. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * 6 units were fresh (cached). Cargo emits no start or finish events for fresh units, making their fingerprint verification time unmeasurable from log events alone.
+  * No units recorded start events in this log session.
+  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler gaps cannot be definitively assigned to job token starvation vs OS delay.
+
+================================================================================

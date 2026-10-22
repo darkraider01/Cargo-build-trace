@@ -1,0 +1,13 @@
+{
+  "scenario": "2_no_change_rebuild",
+  "total_units": 6,
+  "dirty_units": 0,
+  "fresh_units": 6,
+  "new_units": 0,
+  "critical_path_steps": 0,
+  "critical_path_duration": 0.0,
+  "execution_duration": 0.0,
+  "scheduler_gaps": 0.0,
+  "timing_agreement_pct": 100.0,
+  "agreement_records": []
+}

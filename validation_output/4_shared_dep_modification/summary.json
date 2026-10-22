@@ -1,0 +1,58 @@
+{
+  "scenario": "4_shared_dep_modification",
+  "total_units": 6,
+  "dirty_units": 4,
+  "fresh_units": 2,
+  "new_units": 0,
+  "critical_path_steps": 3,
+  "critical_path_duration": 0.146789907,
+  "execution_duration": 0.144875656,
+  "scheduler_gaps": 0.0019142509999999936,
+  "timing_agreement_pct": 100.0,
+  "agreement_records": [
+    {
+      "index": 5,
+      "name": "string_parser",
+      "cargo_start": 0.02,
+      "our_start": 0.02,
+      "cargo_duration": 0.05,
+      "our_duration": 0.05,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 4,
+      "name": "orchestrator",
+      "cargo_start": 0.05,
+      "our_start": 0.05,
+      "cargo_duration": 0.03,
+      "our_duration": 0.03,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 2,
+      "name": "leaf_tool",
+      "cargo_start": 0.06,
+      "our_start": 0.06,
+      "cargo_duration": 0.09,
+      "our_duration": 0.09,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 0,
+      "name": "cli_app",
+      "cargo_start": 0.08,
+      "our_start": 0.08,
+      "cargo_duration": 0.08,
+      "our_duration": 0.08,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    }
+  ]
+}

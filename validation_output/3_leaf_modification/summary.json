@@ -1,0 +1,25 @@
+{
+  "scenario": "3_leaf_modification",
+  "total_units": 6,
+  "dirty_units": 1,
+  "fresh_units": 5,
+  "new_units": 0,
+  "critical_path_steps": 1,
+  "critical_path_duration": 0.07517309,
+  "execution_duration": 0.07426943899999999,
+  "scheduler_gaps": 0.0009036510000000001,
+  "timing_agreement_pct": 100.0,
+  "agreement_records": [
+    {
+      "index": 2,
+      "name": "leaf_tool",
+      "cargo_start": 0.01,
+      "our_start": 0.01,
+      "cargo_duration": 0.07,
+      "our_duration": 0.07,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    }
+  ]
+}

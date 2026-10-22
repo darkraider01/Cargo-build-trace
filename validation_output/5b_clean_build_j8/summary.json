@@ -1,0 +1,80 @@
+{
+  "scenario": "5b_clean_build_j8",
+  "total_units": 6,
+  "dirty_units": 0,
+  "fresh_units": 0,
+  "new_units": 6,
+  "critical_path_steps": 3,
+  "critical_path_duration": 0.21574921399999997,
+  "execution_duration": 0.21365597399999997,
+  "scheduler_gaps": 0.002093239999999996,
+  "timing_agreement_pct": 100.0,
+  "agreement_records": [
+    {
+      "index": 1,
+      "name": "core_util",
+      "cargo_start": 0.05,
+      "our_start": 0.05,
+      "cargo_duration": 0.06,
+      "our_duration": 0.06,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 3,
+      "name": "math_engine",
+      "cargo_start": 0.08,
+      "our_start": 0.08,
+      "cargo_duration": 0.09,
+      "our_duration": 0.09,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 5,
+      "name": "string_parser",
+      "cargo_start": 0.08,
+      "our_start": 0.08,
+      "cargo_duration": 0.1,
+      "our_duration": 0.1,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 4,
+      "name": "orchestrator",
+      "cargo_start": 0.13,
+      "our_start": 0.13,
+      "cargo_duration": 0.04,
+      "our_duration": 0.04,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 0,
+      "name": "cli_app",
+      "cargo_start": 0.18,
+      "our_start": 0.18,
+      "cargo_duration": 0.08,
+      "our_duration": 0.08,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    },
+    {
+      "index": 2,
+      "name": "leaf_tool",
+      "cargo_start": 0.18,
+      "our_start": 0.18,
+      "cargo_duration": 0.08,
+      "our_duration": 0.08,
+      "start_diff": 0.0,
+      "duration_diff": 0.0,
+      "agrees": true
+    }
+  ]
+}
