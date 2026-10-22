@@ -3,18 +3,18 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
 ================================================================================
 
 ## 1. SESSION INFORMATION
-  Run ID:              20261022T210340966Z-2d7fb4ccd59fa485
-  Timestamp:           2026-10-22T21:03:40.987953474Z
-  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /home/brandybuck/Code/Cargo-build-trace/test_workspace/Cargo.toml -Zbuild-analysis -j 1
-  Working Directory:   /home/brandybuck/Code/Cargo-build-trace/test_workspace
-  Workspace Root:      /home/brandybuck/Code/Cargo-build-trace/test_workspace
-  Target Directory:    /home/brandybuck/Code/Cargo-build-trace/test_workspace/target
+  Run ID:              20261022T215859531Z-af4d9b3605a5442b
+  Timestamp:           2026-10-22T21:58:59.552827156Z
+  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /tmp/cargo_trace_val_c7c5g6hs/test_workspace/Cargo.toml -Zbuild-analysis -j 1
+  Working Directory:   /tmp/cargo_trace_val_c7c5g6hs/test_workspace
+  Workspace Root:      /tmp/cargo_trace_val_c7c5g6hs/test_workspace
+  Target Directory:    /tmp/cargo_trace_val_c7c5g6hs/test_workspace/target
   Host Platform:       x86_64-unknown-linux-gnu
   Profile:             dev
   Jobs (-j):           1
   Available CPUs:      12
   Rustc Version:       1.99.0
-  Unit Graph Time:     0.0550s
+  Unit Graph Time:     0.0644s
 
 ## 2. UNITS SUMMARY
   Total Registered Units: 6
@@ -26,55 +26,83 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
   Detailed Unit Status Table:
   Idx   Unit Name                    Kind       Status   Start (s)   Rmeta (s)   Finish (s)  Duration  
   ----------------------------------------------------------------------------------------------------
-  0     cli_app v0.1.0 (cli_app:bi   bin        new      0.417       -           0.511       0.094s    
-  1     core_util v0.1.0             lib        new      0.057       0.086       0.141       0.085s    
-  2     leaf_tool v0.1.0 (leaf_too   bin        new      0.511       -           0.608       0.097s    
-  3     math_engine v0.1.0           lib        new      0.265       0.305       0.370       0.104s    
-  4     orchestrator v0.1.0          lib        new      0.370       0.399       0.417       0.047s    
-  5     string_parser v0.1.0         lib        new      0.142       0.180       0.265       0.124s    
+  0     cli_app v0.1.0 (cli_app:bi   bin        new      0.410       -           0.482       0.073s    
+  1     core_util v0.1.0             lib        new      0.066       0.103       0.163       0.097s    
+  2     leaf_tool v0.1.0 (leaf_too   bin        new      0.483       -           0.557       0.074s    
+  3     math_engine v0.1.0           lib        new      0.282       0.318       0.378       0.096s    
+  4     orchestrator v0.1.0          lib        new      0.378       0.400       0.410       0.032s    
+  5     string_parser v0.1.0         lib        new      0.163       0.200       0.282       0.119s    
 
-## 3. REBUILD REASON ATTRIBUTION CHAINS
-  * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=new [AMBIGUOUS]:
+## 3. DEPENDENCY GRAPH INTERPRETATION
+  Distinguishing Registered, Effective Scheduling, and Rebuild-Causality Edges:
+  * Unit 0 [cli_app v0.1.0 (cli_app:bin)]:
+      Registered Direct Dependencies:   unit 4 (orchestrator)
+      Effective Scheduling Prerequisites: unit 4 (orchestrator, all), unit 3 (math_engine, all, synthetic), unit 1 (core_util, all, synthetic), unit 5 (string_parser, all, synthetic)
+      Recorded Dynamic Unblocker:        unit 4 (orchestrator, finish @ 0.410s)
+  * Unit 1 [core_util v0.1.0]:
+      Registered Direct Dependencies:   none
+      Effective Scheduling Prerequisites: none
+      Recorded Dynamic Unblocker:        none (DAG root)
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)]:
+      Registered Direct Dependencies:   unit 5 (string_parser)
+      Effective Scheduling Prerequisites: unit 5 (string_parser, all), unit 1 (core_util, all, synthetic)
+      Recorded Dynamic Unblocker:        unit 5 (string_parser, finish @ 0.282s)
+  * Unit 3 [math_engine v0.1.0]:
+      Registered Direct Dependencies:   unit 1 (core_util)
+      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Recorded Dynamic Unblocker:        unit 1 (core_util, rmeta @ 0.103s)
+  * Unit 4 [orchestrator v0.1.0]:
+      Registered Direct Dependencies:   unit 3 (math_engine), unit 5 (string_parser)
+      Effective Scheduling Prerequisites: unit 3 (math_engine, metadata), unit 5 (string_parser, metadata)
+      Recorded Dynamic Unblocker:        unit 3 (math_engine, rmeta @ 0.318s)
+  * Unit 5 [string_parser v0.1.0]:
+      Registered Direct Dependencies:   unit 1 (core_util)
+      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Recorded Dynamic Unblocker:        unit 1 (core_util, rmeta @ 0.103s)
+
+## 4. REBUILD REASON ATTRIBUTION CHAINS
+  * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=new [FRESH_BUILD]:
       Causal Chain: unit 0 (cli_app)
       Root Invalidation Cause: fresh build (no previous artifact)
-      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: orchestrator v0.1.0
-  * Unit 1 [core_util v0.1.0] status=new:
+  * Unit 1 [core_util v0.1.0] status=new [FRESH_BUILD]:
       Causal Chain: unit 1 (core_util)
       Root Invalidation Cause: fresh build (no previous artifact)
-  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=new [AMBIGUOUS]:
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=new [FRESH_BUILD]:
       Causal Chain: unit 2 (leaf_tool)
       Root Invalidation Cause: fresh build (no previous artifact)
-      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: string_parser v0.1.0
-  * Unit 3 [math_engine v0.1.0] status=new [AMBIGUOUS]:
+  * Unit 3 [math_engine v0.1.0] status=new [FRESH_BUILD]:
       Causal Chain: unit 3 (math_engine)
       Root Invalidation Cause: fresh build (no previous artifact)
-      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: core_util v0.1.0
-  * Unit 4 [orchestrator v0.1.0] status=new [AMBIGUOUS]:
+  * Unit 4 [orchestrator v0.1.0] status=new [FRESH_BUILD]:
       Causal Chain: unit 4 (orchestrator)
       Root Invalidation Cause: fresh build (no previous artifact)
-      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: math_engine v0.1.0, string_parser v0.1.0
-  * Unit 5 [string_parser v0.1.0] status=new [AMBIGUOUS]:
+  * Unit 5 [string_parser v0.1.0] status=new [FRESH_BUILD]:
       Causal Chain: unit 5 (string_parser)
       Root Invalidation Cause: fresh build (no previous artifact)
-      Ambiguity Note: Unit is dirty with non-specific cause ('None'), though upstream dependencies rebuilt: core_util v0.1.0
 
-## 4. OBSERVED EXECUTION CRITICAL PATH
-  Terminal Target Unit: leaf_tool v0.1.0 (leaf_tool:bin) (index 2)
+## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN
+  Target Unit: leaf_tool v0.1.0 (leaf_tool:bin) (index 2, selection: requested_target)
 
-  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Wait Gap   Unblocked By
-  ---------------------------------------------------------------------------------------------------------
-  1     core_util v0.1.0             rmeta    0.057      0.086      0.030     s 0.002    s DAG root / initial
-        Note: DAG root (no dependencies in unit graph)
-  2     string_parser v0.1.0         finish   0.142      0.265      0.124     s 0.055    s unit 1 (rmeta @ 0.086s)
-  3     leaf_tool v0.1.0 (leaf_too   finish   0.511      0.608      0.097     s 0.246    s unit 5 (finish @ 0.265s)
+  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Ready Delay  Unblocked By
+  --------------------------------------------------------------------------------------------------------------
+  1    core_util v0.1.0             rmeta    0.066      0.103      0.037     s 0.001      s DAG root / initial
+        Note: DAG root (no registered dependencies)
+  2    string_parser v0.1.0         finish   0.163      0.282      0.119     s 0.060      s unit 1 (rmeta @ 0.103s) (direct)
+  3    leaf_tool v0.1.0 (leaf_too   finish   0.483      0.557      0.074     s 0.201      s unit 5 (finish @ 0.282s) (synthetic/indirect)
 
-## 5. TIMING AND CRITICAL-PATH BUDGET
-  Total Observed Critical Path Duration: 0.5531s
-  - Active Unit Execution on Path:        0.2501s (45.2%)
-  - Unexplained Scheduler Gaps on Path:   0.3030s (54.8%)
-    (Initial Queue Delay before 1st unit: 0.0016s)
+## 6. TIMING AND CHAIN BUDGET
+  Total Observed Chain Duration:       0.4926s
+  - Active Unit Execution on Chain:    0.2307s (46.8%)
+  - Cumulative Ready-to-Start Delays:  0.2619s (53.2%)
+    (Initial Queue Startup Delay:      0.0014s)
 
-## 6. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
-  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler gaps cannot be definitively assigned to job token starvation vs OS delay.
+  Note on Ready-to-Start Delays:
+    Delays between unblocking and execution start conflate jobserver token contention (-j),
+    job queue priority ordering, and OS process fork/exec overhead. Cargo does not log
+    token acquire/release events, so this interval cannot be definitively split into
+    dependency waiting vs worker saturation without additional instrumentation.
+
+## 7. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler delays cannot be definitively assigned to job token starvation vs OS delay.
 
 ================================================================================

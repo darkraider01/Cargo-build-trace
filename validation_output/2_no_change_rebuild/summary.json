@@ -1,13 +1,16 @@
 {
   "scenario": "2_no_change_rebuild",
+  "run_id": "20261022T215859098Z-af4d9b3605a5442b",
   "total_units": 6,
+  "executed_units": 0,
   "dirty_units": 0,
   "fresh_units": 6,
   "new_units": 0,
-  "critical_path_steps": 0,
-  "critical_path_duration": 0.0,
+  "chain_steps": 0,
+  "chain_duration": 0.0,
   "execution_duration": 0.0,
-  "scheduler_gaps": 0.0,
+  "ready_to_start_delays": 0.0,
+  "timing_agreement_units_compared": 0,
   "timing_agreement_pct": 100.0,
   "agreement_records": []
 }

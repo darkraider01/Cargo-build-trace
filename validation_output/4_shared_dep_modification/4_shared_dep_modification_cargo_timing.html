@@ -190,13 +190,13 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>Total units:</td><td>6</td>
 </tr>
 <tr>
-<td>Max concurrency:</td><td>3 (jobs=12 ncpu=12)</td>
+<td>Max concurrency:</td><td>2 (jobs=12 ncpu=12)</td>
 </tr>
 <tr>
-<td>Build start:</td><td>2026-10-22T21:03:40.703Z</td>
+<td>Build start:</td><td>2026-10-22T21:58:59.283Z</td>
 </tr>
 <tr>
-<td>Total time:</td><td>0.2s</td>
+<td>Total time:</td><td>0.1s</td>
 </tr>
 <tr>
 <td>rustc:</td><td>rustc 1.99.0 (b940084d7 2026-09-28)<br>Host: x86_64-unknown-linux-gnu<br>Target: x86_64-unknown-linux-gnu</td>
@@ -245,7 +245,7 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 
 <tr>
 <td>1.</td>
-<td>leaf_tool v0.1.0 leaf_tool "bin"</td>
+<td>cli_app v0.1.0 cli_app "bin"</td>
 <td>0.1s</td>
 <td></td>
 <td></td>
@@ -254,7 +254,7 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 
 <tr>
 <td>2.</td>
-<td>cli_app v0.1.0 cli_app "bin"</td>
+<td>leaf_tool v0.1.0 leaf_tool "bin"</td>
 <td>0.1s</td>
 <td></td>
 <td></td>
@@ -264,9 +264,9 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <tr>
 <td>3.</td>
 <td>string_parser v0.1.0</td>
-<td>0.1s</td>
-<td>0.0s (60%)</td>
-<td>0.0s (40%)</td>
+<td>0.0s</td>
+<td>0.0s (67%)</td>
+<td>0.0s (33%)</td>
 <td></td>
 </tr>
 
@@ -290,8 +290,8 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.02,
-    "duration": 0.05,
+    "start": 0.01,
+    "duration": 0.03,
     "unblocked_units": [
       2
     ],
@@ -303,14 +303,14 @@ const UNIT_DATA = [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.03
+          "end": 0.02
         }
       ],
       [
         "codegen",
         {
-          "start": 0.03,
-          "end": 0.05
+          "start": 0.02,
+          "end": 0.03
         }
       ]
     ]
@@ -322,7 +322,7 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.05,
+    "start": 0.03,
     "duration": 0.03,
     "unblocked_units": [
       0
@@ -352,8 +352,8 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": " leaf_tool \"bin\"",
     "features": [],
-    "start": 0.06,
-    "duration": 0.09,
+    "start": 0.04,
+    "duration": 0.07,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": null
@@ -365,7 +365,7 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": " cli_app \"bin\"",
     "features": [],
-    "start": 0.08,
+    "start": 0.06,
     "duration": 0.08,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
@@ -374,43 +374,37 @@ const UNIT_DATA = [
 ];
 const CONCURRENCY_DATA = [
   {
-    "t": 0.02,
+    "t": 0.01,
     "active": 1,
     "waiting": 0,
     "inactive": 3
   },
   {
-    "t": 0.05,
+    "t": 0.03,
     "active": 2,
     "waiting": 0,
     "inactive": 2
   },
   {
-    "t": 0.06,
-    "active": 3,
-    "waiting": 0,
-    "inactive": 1
-  },
-  {
-    "t": 0.07,
+    "t": 0.04,
     "active": 2,
     "waiting": 0,
     "inactive": 1
   },
   {
-    "t": 0.08,
+    "t": 0.06,
     "active": 2,
     "waiting": 0,
     "inactive": 0
   },
   {
-    "t": 0.15,
+    "t": 0.11000000000000001,
     "active": 1,
     "waiting": 0,
     "inactive": 0
   },
   {
-    "t": 0.16,
+    "t": 0.14,
     "active": 0,
     "waiting": 0,
     "inactive": 0

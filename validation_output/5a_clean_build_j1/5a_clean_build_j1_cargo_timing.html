@@ -190,10 +190,10 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>Total units:</td><td>6</td>
 </tr>
 <tr>
-<td>Max concurrency:</td><td>1 (jobs=1 ncpu=12)</td>
+<td>Max concurrency:</td><td>2 (jobs=1 ncpu=12)</td>
 </tr>
 <tr>
-<td>Build start:</td><td>2026-10-22T21:03:40.966Z</td>
+<td>Build start:</td><td>2026-10-22T21:58:59.531Z</td>
 </tr>
 <tr>
 <td>Total time:</td><td>0.6s</td>
@@ -254,7 +254,7 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 
 <tr>
 <td>2.</td>
-<td>math_engine v0.1.0</td>
+<td>core_util v0.1.0</td>
 <td>0.1s</td>
 <td>0.0s (40%)</td>
 <td>0.1s (60%)</td>
@@ -263,10 +263,10 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 
 <tr>
 <td>3.</td>
-<td>leaf_tool v0.1.0 leaf_tool "bin"</td>
+<td>math_engine v0.1.0</td>
 <td>0.1s</td>
-<td></td>
-<td></td>
+<td>0.0s (40%)</td>
+<td>0.1s (60%)</td>
 <td></td>
 </tr>
 
@@ -281,19 +281,19 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 
 <tr>
 <td>5.</td>
-<td>core_util v0.1.0</td>
+<td>leaf_tool v0.1.0 leaf_tool "bin"</td>
 <td>0.1s</td>
-<td>0.0s (38%)</td>
-<td>0.1s (62%)</td>
+<td></td>
+<td></td>
 <td></td>
 </tr>
 
 <tr>
 <td>6.</td>
 <td>orchestrator v0.1.0</td>
-<td>0.1s</td>
-<td>0.0s (60%)</td>
-<td>0.0s (40%)</td>
+<td>0.0s</td>
+<td>0.0s (67%)</td>
+<td>0.0s (33%)</td>
 <td></td>
 </tr>
 </tbody>
@@ -308,26 +308,26 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.06,
-    "duration": 0.08,
+    "start": 0.07,
+    "duration": 0.1,
     "unblocked_units": [],
     "unblocked_rmeta_units": [
-      3,
-      5
+      5,
+      3
     ],
     "sections": [
       [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.03
+          "end": 0.04
         }
       ],
       [
         "codegen",
         {
-          "start": 0.03,
-          "end": 0.08
+          "start": 0.04,
+          "end": 0.1
         }
       ]
     ]
@@ -339,7 +339,7 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.14,
+    "start": 0.16,
     "duration": 0.12,
     "unblocked_units": [
       2
@@ -369,7 +369,7 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.27,
+    "start": 0.28,
     "duration": 0.1,
     "unblocked_units": [],
     "unblocked_rmeta_units": [
@@ -399,8 +399,8 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": "",
     "features": [],
-    "start": 0.37,
-    "duration": 0.05,
+    "start": 0.38,
+    "duration": 0.03,
     "unblocked_units": [
       0
     ],
@@ -410,14 +410,14 @@ const UNIT_DATA = [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.03
+          "end": 0.02
         }
       ],
       [
         "codegen",
         {
-          "start": 0.03,
-          "end": 0.05
+          "start": 0.02,
+          "end": 0.03
         }
       ]
     ]
@@ -429,8 +429,8 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": " cli_app \"bin\"",
     "features": [],
-    "start": 0.42,
-    "duration": 0.09,
+    "start": 0.41,
+    "duration": 0.07,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": null
@@ -442,8 +442,8 @@ const UNIT_DATA = [
     "mode": "todo",
     "target": " leaf_tool \"bin\"",
     "features": [],
-    "start": 0.51,
-    "duration": 0.1,
+    "start": 0.48,
+    "duration": 0.07,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": null
@@ -451,61 +451,67 @@ const UNIT_DATA = [
 ];
 const CONCURRENCY_DATA = [
   {
-    "t": 0.06,
+    "t": 0.07,
     "active": 1,
     "waiting": 0,
     "inactive": 5
   },
   {
-    "t": 0.09,
+    "t": 0.11000000000000001,
     "active": 1,
     "waiting": 2,
     "inactive": 3
   },
   {
-    "t": 0.14,
+    "t": 0.16,
+    "active": 2,
+    "waiting": 1,
+    "inactive": 3
+  },
+  {
+    "t": 0.17,
     "active": 1,
     "waiting": 1,
     "inactive": 3
   },
   {
-    "t": 0.26,
-    "active": 0,
-    "waiting": 2,
-    "inactive": 2
-  },
-  {
-    "t": 0.27,
+    "t": 0.28,
     "active": 1,
     "waiting": 1,
     "inactive": 2
   },
   {
-    "t": 0.31,
+    "t": 0.32,
     "active": 1,
     "waiting": 2,
     "inactive": 1
   },
   {
-    "t": 0.37,
+    "t": 0.38,
     "active": 1,
     "waiting": 1,
     "inactive": 1
   },
   {
-    "t": 0.42,
+    "t": 0.41,
+    "active": 2,
+    "waiting": 1,
+    "inactive": 0
+  },
+  {
+    "t": 0.41000000000000003,
     "active": 1,
     "waiting": 1,
     "inactive": 0
   },
   {
-    "t": 0.51,
+    "t": 0.48,
     "active": 1,
     "waiting": 0,
     "inactive": 0
   },
   {
-    "t": 0.61,
+    "t": 0.55,
     "active": 0,
     "waiting": 0,
     "inactive": 0

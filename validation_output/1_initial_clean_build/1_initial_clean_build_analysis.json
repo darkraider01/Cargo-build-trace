@@ -1,0 +1,493 @@
+{
+  "session": {
+    "run_id": "20261022T215858788Z-af4d9b3605a5442b",
+    "command": [
+      "/home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo",
+      "build",
+      "--manifest-path",
+      "/tmp/cargo_trace_val_c7c5g6hs/test_workspace/Cargo.toml",
+      "-Zbuild-analysis"
+    ],
+    "cwd": "/tmp/cargo_trace_val_c7c5g6hs/test_workspace",
+    "host": "x86_64-unknown-linux-gnu",
+    "jobs": 12,
+    "num_cpus": 12,
+    "profile": "dev",
+    "rustc_version": "1.99.0",
+    "rustc_version_verbose": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "target_dir": "/tmp/cargo_trace_val_c7c5g6hs/test_workspace/target",
+    "workspace_root": "/tmp/cargo_trace_val_c7c5g6hs/test_workspace",
+    "build_started_timestamp": "2026-10-22T21:58:58.809350063Z",
+    "resolution_started": 0.046953237,
+    "resolution_finished": 0.047927932,
+    "unit_graph_started": 0.059411682,
+    "unit_graph_finished": 0.059500319
+  },
+  "units": {
+    "0": {
+      "index": 0,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/cli_app#0.1.0",
+      "name": "cli_app",
+      "version": "0.1.0",
+      "target_name": "cli_app",
+      "target_kind": "bin",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [
+        4
+      ],
+      "dependents": [],
+      "effective_dependencies": [
+        {
+          "dep_index": 4,
+          "required_artifact": "all",
+          "is_synthetic": false
+        },
+        {
+          "dep_index": 3,
+          "required_artifact": "all",
+          "is_synthetic": true
+        },
+        {
+          "dep_index": 1,
+          "required_artifact": "all",
+          "is_synthetic": true
+        },
+        {
+          "dep_index": 5,
+          "required_artifact": "all",
+          "is_synthetic": true
+        }
+      ],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.179722163,
+      "rmeta_elapsed": null,
+      "finish_elapsed": 0.252154016,
+      "unblocked_by": {
+        "unblocker_index": 4,
+        "kind": "finish",
+        "elapsed": 0.179596847
+      },
+      "unblocked_units": [],
+      "unblocked_rmeta_units": []
+    },
+    "1": {
+      "index": 1,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/core_util#0.1.0",
+      "name": "core_util",
+      "version": "0.1.0",
+      "target_name": "core_util",
+      "target_kind": "lib",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [],
+      "dependents": [
+        3,
+        5
+      ],
+      "effective_dependencies": [],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.060769467,
+      "rmeta_elapsed": 0.096426417,
+      "finish_elapsed": 0.12376926,
+      "unblocked_by": null,
+      "unblocked_units": [],
+      "unblocked_rmeta_units": [
+        3,
+        5
+      ]
+    },
+    "2": {
+      "index": 2,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/leaf_tool#0.1.0",
+      "name": "leaf_tool",
+      "version": "0.1.0",
+      "target_name": "leaf_tool",
+      "target_kind": "bin",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [
+        5
+      ],
+      "dependents": [],
+      "effective_dependencies": [
+        {
+          "dep_index": 5,
+          "required_artifact": "all",
+          "is_synthetic": false
+        },
+        {
+          "dep_index": 1,
+          "required_artifact": "all",
+          "is_synthetic": true
+        }
+      ],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.174317964,
+      "rmeta_elapsed": null,
+      "finish_elapsed": 0.253614986,
+      "unblocked_by": {
+        "unblocker_index": 5,
+        "kind": "finish",
+        "elapsed": 0.174213818
+      },
+      "unblocked_units": [],
+      "unblocked_rmeta_units": []
+    },
+    "3": {
+      "index": 3,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/math_engine#0.1.0",
+      "name": "math_engine",
+      "version": "0.1.0",
+      "target_name": "math_engine",
+      "target_kind": "lib",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [
+        1
+      ],
+      "dependents": [
+        4
+      ],
+      "effective_dependencies": [
+        {
+          "dep_index": 1,
+          "required_artifact": "metadata",
+          "is_synthetic": false
+        }
+      ],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.09667783,
+      "rmeta_elapsed": 0.139141308,
+      "finish_elapsed": 0.172284387,
+      "unblocked_by": {
+        "unblocker_index": 1,
+        "kind": "rmeta",
+        "elapsed": 0.096426417
+      },
+      "unblocked_units": [],
+      "unblocked_rmeta_units": []
+    },
+    "4": {
+      "index": 4,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/orchestrator#0.1.0",
+      "name": "orchestrator",
+      "version": "0.1.0",
+      "target_name": "orchestrator",
+      "target_kind": "lib",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [
+        3,
+        5
+      ],
+      "dependents": [
+        0
+      ],
+      "effective_dependencies": [
+        {
+          "dep_index": 3,
+          "required_artifact": "metadata",
+          "is_synthetic": false
+        },
+        {
+          "dep_index": 5,
+          "required_artifact": "metadata",
+          "is_synthetic": false
+        }
+      ],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.140336397,
+      "rmeta_elapsed": 0.172433347,
+      "finish_elapsed": 0.179596847,
+      "unblocked_by": {
+        "unblocker_index": 5,
+        "kind": "rmeta",
+        "elapsed": 0.140196413
+      },
+      "unblocked_units": [
+        0
+      ],
+      "unblocked_rmeta_units": []
+    },
+    "5": {
+      "index": 5,
+      "package_id": "path+file:///tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser#0.1.0",
+      "name": "string_parser",
+      "version": "0.1.0",
+      "target_name": "string_parser",
+      "target_kind": "lib",
+      "mode": "build",
+      "platform": "x86_64-unknown-linux-gnu",
+      "requested": true,
+      "features": [],
+      "dependencies": [
+        1
+      ],
+      "dependents": [
+        2,
+        4
+      ],
+      "effective_dependencies": [
+        {
+          "dep_index": 1,
+          "required_artifact": "metadata",
+          "is_synthetic": false
+        }
+      ],
+      "status": "new",
+      "cause_raw": null,
+      "parsed_cause": {
+        "kind": "fresh-build",
+        "summary": "fresh build (no previous artifact)",
+        "explicit_dep_unit": null,
+        "stale_path": null,
+        "reference_path": null,
+        "stale_item": null,
+        "stale_mtime": null,
+        "reference_mtime": null,
+        "details": {}
+      },
+      "start_elapsed": 0.0966833,
+      "rmeta_elapsed": 0.140196413,
+      "finish_elapsed": 0.174213818,
+      "unblocked_by": {
+        "unblocker_index": 1,
+        "kind": "rmeta",
+        "elapsed": 0.096426417
+      },
+      "unblocked_units": [
+        2
+      ],
+      "unblocked_rmeta_units": [
+        4
+      ]
+    }
+  },
+  "rebuild_chains": {
+    "0": {
+      "unit_index": 0,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 0,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        0
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    },
+    "1": {
+      "unit_index": 1,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 1,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        1
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    },
+    "2": {
+      "unit_index": 2,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 2,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        2
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    },
+    "3": {
+      "unit_index": 3,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 3,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        3
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    },
+    "4": {
+      "unit_index": 4,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 4,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        4
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    },
+    "5": {
+      "unit_index": 5,
+      "status": "new",
+      "chain_category": "fresh_build",
+      "root_cause_index": 5,
+      "root_cause_summary": "fresh build (no previous artifact)",
+      "full_chain": [
+        5
+      ],
+      "is_ambiguous": false,
+      "ambiguity_reason": null,
+      "stale_path": null
+    }
+  },
+  "unblocking_chain": {
+    "target_unit_index": 2,
+    "target_selection_mode": "requested_target",
+    "segments": [
+      {
+        "step": 1,
+        "unit_index": 1,
+        "unit_name": "core_util v0.1.0",
+        "target_kind": "lib",
+        "phase_unblocked": "rmeta",
+        "start_elapsed": 0.060769467,
+        "effective_end_elapsed": 0.096426417,
+        "full_finish_elapsed": 0.12376926,
+        "execution_duration": 0.03565695,
+        "ready_to_start_delay": 0.0012691479999999977,
+        "unblocked_by_index": null,
+        "unblocked_by_kind": null,
+        "unblock_time": null,
+        "is_observed_root": true,
+        "is_registered_dep_of_successor": true,
+        "timestamp_inconsistent": false,
+        "note": "DAG root (no registered dependencies)"
+      },
+      {
+        "step": 2,
+        "unit_index": 5,
+        "unit_name": "string_parser v0.1.0",
+        "target_kind": "lib",
+        "phase_unblocked": "finish",
+        "start_elapsed": 0.0966833,
+        "effective_end_elapsed": 0.174213818,
+        "full_finish_elapsed": 0.174213818,
+        "execution_duration": 0.07753051799999999,
+        "ready_to_start_delay": 0.0002568829999999994,
+        "unblocked_by_index": 1,
+        "unblocked_by_kind": "rmeta",
+        "unblock_time": 0.096426417,
+        "is_observed_root": false,
+        "is_registered_dep_of_successor": true,
+        "timestamp_inconsistent": false,
+        "note": ""
+      },
+      {
+        "step": 3,
+        "unit_index": 2,
+        "unit_name": "leaf_tool v0.1.0 (leaf_tool:bin)",
+        "target_kind": "bin",
+        "phase_unblocked": "finish",
+        "start_elapsed": 0.174317964,
+        "effective_end_elapsed": 0.253614986,
+        "full_finish_elapsed": 0.253614986,
+        "execution_duration": 0.079297022,
+        "ready_to_start_delay": 0.0001041459999999994,
+        "unblocked_by_index": 5,
+        "unblocked_by_kind": "finish",
+        "unblock_time": 0.174213818,
+        "is_observed_root": false,
+        "is_registered_dep_of_successor": false,
+        "timestamp_inconsistent": false,
+        "note": ""
+      }
+    ],
+    "total_chain_duration": 0.194114667,
+    "total_execution_duration": 0.19248448999999998,
+    "total_ready_to_start_delays": 0.0016301769999999965,
+    "initial_delay": 0.0012691479999999977,
+    "diagnostics": [],
+    "unreconstructed_notes": []
+  },
+  "diagnostics": {
+    "malformed_lines": [],
+    "parse_warnings": [],
+    "unrecognized_events": [],
+    "chain_diagnostics": [],
+    "unreconstructed_notes": []
+  }
+}

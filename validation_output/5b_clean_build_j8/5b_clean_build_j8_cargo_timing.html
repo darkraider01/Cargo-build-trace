@@ -193,7 +193,7 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>Max concurrency:</td><td>3 (jobs=8 ncpu=12)</td>
 </tr>
 <tr>
-<td>Build start:</td><td>2026-10-22T21:03:41.672Z</td>
+<td>Build start:</td><td>2026-10-22T21:59:00.183Z</td>
 </tr>
 <tr>
 <td>Total time:</td><td>0.3s</td>
@@ -247,8 +247,8 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>1.</td>
 <td>string_parser v0.1.0</td>
 <td>0.1s</td>
-<td>0.1s (50%)</td>
-<td>0.1s (50%)</td>
+<td>0.0s (40%)</td>
+<td>0.1s (60%)</td>
 <td></td>
 </tr>
 
@@ -256,8 +256,8 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>2.</td>
 <td>math_engine v0.1.0</td>
 <td>0.1s</td>
-<td>0.1s (56%)</td>
 <td>0.0s (44%)</td>
+<td>0.0s (56%)</td>
 <td></td>
 </tr>
 
@@ -283,17 +283,17 @@ See <a href="https://doc.rust-lang.org/nightly/cargo/reference/timings.html">Doc
 <td>5.</td>
 <td>core_util v0.1.0</td>
 <td>0.1s</td>
-<td>0.0s (50%)</td>
-<td>0.0s (50%)</td>
+<td>0.0s (60%)</td>
+<td>0.0s (40%)</td>
 <td></td>
 </tr>
 
 <tr>
 <td>6.</td>
 <td>orchestrator v0.1.0</td>
-<td>0.0s</td>
-<td>0.0s (75%)</td>
-<td>0.0s (25%)</td>
+<td>0.1s</td>
+<td>0.0s (80%)</td>
+<td>0.0s (20%)</td>
 <td></td>
 </tr>
 </tbody>
@@ -309,7 +309,7 @@ const UNIT_DATA = [
     "target": "",
     "features": [],
     "start": 0.05,
-    "duration": 0.06,
+    "duration": 0.05,
     "unblocked_units": [],
     "unblocked_rmeta_units": [
       3,
@@ -327,7 +327,7 @@ const UNIT_DATA = [
         "codegen",
         {
           "start": 0.03,
-          "end": 0.06
+          "end": 0.05
         }
       ]
     ]
@@ -348,13 +348,13 @@ const UNIT_DATA = [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.05
+          "end": 0.04
         }
       ],
       [
         "codegen",
         {
-          "start": 0.05,
+          "start": 0.04,
           "end": 0.09
         }
       ]
@@ -381,13 +381,13 @@ const UNIT_DATA = [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.05
+          "end": 0.04
         }
       ],
       [
         "codegen",
         {
-          "start": 0.05,
+          "start": 0.04,
           "end": 0.1
         }
       ]
@@ -401,7 +401,7 @@ const UNIT_DATA = [
     "target": "",
     "features": [],
     "start": 0.13,
-    "duration": 0.04,
+    "duration": 0.05,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": [
@@ -409,14 +409,14 @@ const UNIT_DATA = [
         "frontend",
         {
           "start": 0.0,
-          "end": 0.03
+          "end": 0.04
         }
       ],
       [
         "codegen",
         {
-          "start": 0.03,
-          "end": 0.04
+          "start": 0.04,
+          "end": 0.05
         }
       ]
     ]
@@ -429,7 +429,7 @@ const UNIT_DATA = [
     "target": " cli_app \"bin\"",
     "features": [],
     "start": 0.18,
-    "duration": 0.08,
+    "duration": 0.09,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": null
@@ -442,7 +442,7 @@ const UNIT_DATA = [
     "target": " leaf_tool \"bin\"",
     "features": [],
     "start": 0.18,
-    "duration": 0.08,
+    "duration": 0.09,
     "unblocked_units": [],
     "unblocked_rmeta_units": [],
     "sections": null
@@ -462,10 +462,16 @@ const CONCURRENCY_DATA = [
     "inactive": 3
   },
   {
-    "t": 0.11,
+    "t": 0.1,
     "active": 2,
     "waiting": 0,
     "inactive": 3
+  },
+  {
+    "t": 0.12,
+    "active": 2,
+    "waiting": 1,
+    "inactive": 2
   },
   {
     "t": 0.13,
@@ -480,19 +486,13 @@ const CONCURRENCY_DATA = [
     "inactive": 2
   },
   {
-    "t": 0.17,
-    "active": 1,
-    "waiting": 0,
-    "inactive": 2
-  },
-  {
     "t": 0.18,
     "active": 2,
     "waiting": 0,
     "inactive": 0
   },
   {
-    "t": 0.26,
+    "t": 0.27,
     "active": 0,
     "waiting": 0,
     "inactive": 0

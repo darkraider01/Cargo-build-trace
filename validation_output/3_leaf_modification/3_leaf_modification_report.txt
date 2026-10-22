@@ -3,18 +3,18 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
 ================================================================================
 
 ## 1. SESSION INFORMATION
-  Run ID:              20261022T210340560Z-2d7fb4ccd59fa485
-  Timestamp:           2026-10-22T21:03:40.569105392Z
-  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /home/brandybuck/Code/Cargo-build-trace/test_workspace/Cargo.toml -Zbuild-analysis
-  Working Directory:   /home/brandybuck/Code/Cargo-build-trace/test_workspace
-  Workspace Root:      /home/brandybuck/Code/Cargo-build-trace/test_workspace
-  Target Directory:    /home/brandybuck/Code/Cargo-build-trace/test_workspace/target
+  Run ID:              20261022T215859161Z-af4d9b3605a5442b
+  Timestamp:           2026-10-22T21:58:59.170588145Z
+  Command:             /home/brandybuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --manifest-path /tmp/cargo_trace_val_c7c5g6hs/test_workspace/Cargo.toml -Zbuild-analysis
+  Working Directory:   /tmp/cargo_trace_val_c7c5g6hs/test_workspace
+  Workspace Root:      /tmp/cargo_trace_val_c7c5g6hs/test_workspace
+  Target Directory:    /tmp/cargo_trace_val_c7c5g6hs/test_workspace/target
   Host Platform:       x86_64-unknown-linux-gnu
   Profile:             dev
   Jobs (-j):           12
   Available CPUs:      12
   Rustc Version:       1.99.0
-  Unit Graph Time:     0.0096s
+  Unit Graph Time:     0.0101s
 
 ## 2. UNITS SUMMARY
   Total Registered Units: 6
@@ -28,34 +28,68 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
   ----------------------------------------------------------------------------------------------------
   0     cli_app v0.1.0 (cli_app:bi   bin        fresh    -           -           -           -         
   1     core_util v0.1.0             lib        fresh    -           -           -           -         
-  2     leaf_tool v0.1.0 (leaf_too   bin        dirty    0.011       -           0.085       0.074s    
+  2     leaf_tool v0.1.0 (leaf_too   bin        dirty    0.011       -           0.068       0.057s    
   3     math_engine v0.1.0           lib        fresh    -           -           -           -         
   4     orchestrator v0.1.0          lib        fresh    -           -           -           -         
   5     string_parser v0.1.0         lib        fresh    -           -           -           -         
 
-## 3. REBUILD REASON ATTRIBUTION CHAINS
-  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=dirty:
+## 3. DEPENDENCY GRAPH INTERPRETATION
+  Distinguishing Registered, Effective Scheduling, and Rebuild-Causality Edges:
+  * Unit 0 [cli_app v0.1.0 (cli_app:bin)]:
+      Registered Direct Dependencies:   unit 4 (orchestrator)
+      Effective Scheduling Prerequisites: unit 4 (orchestrator, all), unit 3 (math_engine, all, synthetic), unit 1 (core_util, all, synthetic), unit 5 (string_parser, all, synthetic)
+      Recorded Dynamic Unblocker:        none (root or fresh unblocker)
+  * Unit 1 [core_util v0.1.0]:
+      Registered Direct Dependencies:   none
+      Effective Scheduling Prerequisites: none
+      Recorded Dynamic Unblocker:        none (DAG root)
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)]:
+      Registered Direct Dependencies:   unit 5 (string_parser)
+      Effective Scheduling Prerequisites: unit 5 (string_parser, all), unit 1 (core_util, all, synthetic)
+      Recorded Dynamic Unblocker:        none (root or fresh unblocker)
+  * Unit 3 [math_engine v0.1.0]:
+      Registered Direct Dependencies:   unit 1 (core_util)
+      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Recorded Dynamic Unblocker:        none (root or fresh unblocker)
+  * Unit 4 [orchestrator v0.1.0]:
+      Registered Direct Dependencies:   unit 3 (math_engine), unit 5 (string_parser)
+      Effective Scheduling Prerequisites: unit 3 (math_engine, metadata), unit 5 (string_parser, metadata)
+      Recorded Dynamic Unblocker:        none (root or fresh unblocker)
+  * Unit 5 [string_parser v0.1.0]:
+      Registered Direct Dependencies:   unit 1 (core_util)
+      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Recorded Dynamic Unblocker:        none (root or fresh unblocker)
+
+## 4. REBUILD REASON ATTRIBUTION CHAINS
+  * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=dirty [LOCAL_INVALIDATION]:
       Causal Chain: unit 2 (leaf_tool)
-      Root Invalidation Cause: filesystem input modified
+      Root Invalidation Cause: changed-file modified: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/leaf_tool/src/main.rs
+      Invalidating File Path:  /tmp/cargo_trace_val_c7c5g6hs/test_workspace/leaf_tool/src/main.rs
 
-## 4. OBSERVED EXECUTION CRITICAL PATH
-  Terminal Target Unit: leaf_tool v0.1.0 (leaf_tool:bin) (index 2)
+## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN
+  Target Unit: leaf_tool v0.1.0 (leaf_tool:bin) (index 2, selection: requested_target)
 
-  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Wait Gap   Unblocked By
-  ---------------------------------------------------------------------------------------------------------
-  1     leaf_tool v0.1.0 (leaf_too   finish   0.011      0.085      0.074     s 0.001    s DAG root / initial
-        Note: Unblocked by fresh dependencies (Cargo does not log unblock events for fresh units)
+  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Ready Delay  Unblocked By
+  --------------------------------------------------------------------------------------------------------------
+  1    leaf_tool v0.1.0 (leaf_too   finish   0.011      0.068      0.057     s 0.001      s DAG root / initial
+        Note: Unblocked by fresh dependencies (Cargo omits unblock events for fresh units)
 
-## 5. TIMING AND CRITICAL-PATH BUDGET
-  Total Observed Critical Path Duration: 0.0752s
-  - Active Unit Execution on Path:        0.0743s (98.8%)
-  - Unexplained Scheduler Gaps on Path:   0.0009s (1.2%)
-    (Initial Queue Delay before 1st unit: 0.0009s)
+## 6. TIMING AND CHAIN BUDGET
+  Total Observed Chain Duration:       0.0581s
+  - Active Unit Execution on Chain:    0.0573s (98.6%)
+  - Cumulative Ready-to-Start Delays:  0.0008s (1.4%)
+    (Initial Queue Startup Delay:      0.0008s)
 
-## 6. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
-  * 5 units were fresh (cached). Cargo emits no start or finish events for fresh units, making their fingerprint verification time unmeasurable from log events alone.
-  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler gaps cannot be definitively assigned to job token starvation vs OS delay.
+  Note on Ready-to-Start Delays:
+    Delays between unblocking and execution start conflate jobserver token contention (-j),
+    job queue priority ordering, and OS process fork/exec overhead. Cargo does not log
+    token acquire/release events, so this interval cannot be definitively split into
+    dependency waiting vs worker saturation without additional instrumentation.
+
+## 7. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * 5 units were fresh (cached). Cargo emits no start, finish, or unblock events for fresh units, making their fingerprint verification time unmeasurable from log events alone.
+  * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler delays cannot be definitively assigned to job token starvation vs OS delay.
   * Unit leaf_tool v0.1.0 (leaf_tool:bin) (index 2) started at 0.011s but has no unblocking event in the log. Upstream dependencies were omitted from unblocking telemetry.
-  * Unit leaf_tool v0.1.0 (leaf_tool:bin) (index 2) was unblocked by fresh dependency units ['string_parser'], but Cargo's log does not emit unblock events for fresh units.
+  * Unit leaf_tool v0.1.0 (leaf_tool:bin) (index 2) was unblocked by fresh dependency units ['string_parser'], but Cargo's event stream omits unblock events for fresh units.
 
 ================================================================================

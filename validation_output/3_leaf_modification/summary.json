@@ -1,13 +1,16 @@
 {
   "scenario": "3_leaf_modification",
+  "run_id": "20261022T215859161Z-af4d9b3605a5442b",
   "total_units": 6,
+  "executed_units": 1,
   "dirty_units": 1,
   "fresh_units": 5,
   "new_units": 0,
-  "critical_path_steps": 1,
-  "critical_path_duration": 0.07517309,
-  "execution_duration": 0.07426943899999999,
-  "scheduler_gaps": 0.0009036510000000001,
+  "chain_steps": 1,
+  "chain_duration": 0.058085455999999994,
+  "execution_duration": 0.057264210999999995,
+  "ready_to_start_delays": 0.000821245,
+  "timing_agreement_units_compared": 1,
   "timing_agreement_pct": 100.0,
   "agreement_records": [
     {
@@ -15,8 +18,8 @@
       "name": "leaf_tool",
       "cargo_start": 0.01,
       "our_start": 0.01,
-      "cargo_duration": 0.07,
-      "our_duration": 0.07,
+      "cargo_duration": 0.06,
+      "our_duration": 0.06,
       "start_diff": 0.0,
       "duration_diff": 0.0,
       "agrees": true
