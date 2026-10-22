@@ -1,0 +1,8 @@
+[package]
+name = "orchestrator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+math_engine = { path = "../math_engine" }
+string_parser = { path = "../string_parser" }

@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "core_util",
+    "math_engine",
+    "string_parser",
+    "orchestrator",
+    "cli_app",
+    "leaf_tool",
+]
