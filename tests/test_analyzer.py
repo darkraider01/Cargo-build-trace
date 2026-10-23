@@ -42,6 +42,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
+        self.assertEqual(res.status, "complete")
 
         self.assertEqual(res.target_unit_index, 1)
         self.assertEqual(len(res.segments), 2)
@@ -71,8 +72,8 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         log = (
             '{"reason":"build-started","jobs":4}\n'
             '{"reason":"unit-graph-finished","elapsed":0.00}\n'
-            '{"reason":"unit-registered","index":0,"package_id":"a#0.1.0","dependencies":[1],"mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"a","kind":"lib"}}\n'
-            '{"reason":"unit-registered","index":1,"package_id":"b#0.1.0","dependencies":[0],"dependencies":[0],"mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"b","kind":"lib"}}\n'
+            '{"reason":"unit-registered","index":0,"package_id":"a#0.1.0","mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"a","kind":"lib"}}\n'
+            '{"reason":"unit-registered","index":1,"package_id":"b#0.1.0","dependencies":[0],"mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"b","kind":"lib"}}\n'
             '{"reason":"unit-registered","index":2,"package_id":"c#0.1.0","mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"c","kind":"lib"}}\n'
             '{"reason":"unit-registered","index":3,"package_id":"target#0.1.0","dependencies":[1,2],"requested":true,"mode":"build","platform":"x86_64-unknown-linux-gnu","target":{"name":"target","kind":"bin"}}\n'
             '{"reason":"unit-started","index":0,"elapsed":0.05}\n'
@@ -84,16 +85,27 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
             '{"reason":"unit-started","index":3,"elapsed":0.52}\n'
             '{"reason":"unit-finished","index":3,"elapsed":0.70}\n'
         )
-        parser = BuildAnalysisParser().parse_str(log)
+        parser = BuildAnalysisParser(strict=True).parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
 
         # The observed unblocking chain should follow Unit 2 (the final unblocker) -> Unit 3
+        self.assertEqual(parser.validation_errors, [])
+        self.assertEqual({i: u.dependencies for i, u in parser.units.items()}, {0: [], 1: [0], 2: [], 3: [1, 2]})
+        self.assertEqual(res.status, "complete")
         self.assertEqual(res.target_unit_index, 3)
         self.assertEqual(len(res.segments), 2)
         self.assertEqual(res.segments[0].unit_index, 2)
         self.assertEqual(res.segments[1].unit_index, 3)
         self.assertEqual(res.segments[1].unblocked_by_index, 2)
+        self.assertEqual(res.segments[1].unblocker_relationship, "direct")
+        self.assertAlmostEqual(res.segments[0].execution_duration, .45)
+        self.assertAlmostEqual(res.segments[1].execution_duration, .18)
+        self.assertIsNone(res.segments[0].ready_to_start_delay)
+        self.assertAlmostEqual(res.segments[1].ready_to_start_delay, .02)
+        self.assertAlmostEqual(res.total_execution_duration, .63)
+        self.assertAlmostEqual(res.total_ready_to_start_delays, .02)
+        self.assertAlmostEqual(res.total_chain_duration, .65)
 
     def test_multiple_dependencies_joining_unblocker(self):
         """Verify that when multiple dependencies finish, only the final unblocker is recorded."""
@@ -116,6 +128,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path(target_unit_index=2)
+        self.assertEqual(res.status, "complete")
 
         self.assertEqual(len(res.segments), 2)
         self.assertEqual(res.segments[0].unit_index, 1)
@@ -145,6 +158,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
+        self.assertEqual(res.status, "complete")
 
         self.assertEqual(len(res.segments), 2)
         seg0, seg1 = res.segments[0], res.segments[1]
@@ -185,6 +199,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
+        self.assertEqual(res.status, "complete")
 
         seg0 = res.segments[0]
         self.assertEqual(seg0.phase_unblocked, "finish")
@@ -227,6 +242,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         # 2. Check unblocking chain reconstruction
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path(target_unit_index=0)
+        self.assertEqual(res.status, "complete")
 
         # Target 0 was unblocked by 5 (synthetic edge), which in turn was unblocked at root
         self.assertEqual(len(res.segments), 2)
@@ -252,6 +268,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
+        self.assertEqual(res.status, "complete")
 
         seg1 = res.segments[1]
         self.assertAlmostEqual(seg1.ready_to_start_delay, 0.52)
@@ -272,6 +289,7 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
         res = analyzer.compute_critical_path()
+        self.assertEqual(res.status, "complete")
 
         self.assertEqual(len(res.segments), 1)
         seg = res.segments[0]
@@ -437,11 +455,11 @@ class TestBuildTraceAnalyzer(unittest.TestCase):
                          ("serde", "1.0.228"))
         log = (
             '{"reason":"build-started","run_id":"r123","jobs":4}\n'
-            '{"reason":"unit-graph-finished","elapsed":0.01}\n'
-            '{"reason":"unit-registered","index":0,"package_id":"core#0.1.0","target":{"name":"core","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu"}\n'
-            '{"reason":"unit-fingerprint","index":0,"status":"new"}\n'
-            '{"reason":"unit-started","index":0,"elapsed":0.05}\n'
-            '{"reason":"unit-finished","index":0,"elapsed":0.20}\n'
+            '{"reason":"unit-graph-finished","run_id":"r123","elapsed":0.01}\n'
+            '{"reason":"unit-registered","run_id":"r123","index":0,"package_id":"core#0.1.0","target":{"name":"core","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu"}\n'
+            '{"reason":"unit-fingerprint","run_id":"r123","index":0,"status":"new"}\n'
+            '{"reason":"unit-started","run_id":"r123","index":0,"elapsed":0.05}\n'
+            '{"reason":"unit-finished","run_id":"r123","index":0,"elapsed":0.20}\n'
         )
         parser = BuildAnalysisParser().parse_str(log)
         analyzer = CriticalPathAnalyzer(parser)
@@ -553,14 +571,49 @@ class TestAuditBoundaries(unittest.TestCase):
         self.assertEqual(len(deps), 2)
         self.assertTrue(all(not d.is_synthetic and d.required_artifact == "all" for d in deps))
 
-    def test_binary_dependency_filter_cannot_be_reconstructed(self):
-        parser = parse_events(registration(0, kind="bin"), registration(1, mode="test", dependencies=[0]))
-        edge, = parser.units[1].effective_dependencies
-        self.assertEqual((edge.required_artifact, edge.certainty), ("unknown", "unknown"))
-        self.assertTrue(parser.inference_diagnostics)
+    def test_filtered_binary_keeps_transitive_candidates_uncertain(self):
+        # An integration test also registers its package's binary for execution.
+        # enqueue may filter that binary, but still walks its original dependencies.
+        regs = [registration(2, "core"), registration(1, "support", dependencies=[2]),
+                registration(0, "app", kind="bin", dependencies=[1]),
+                registration(3, "app", kind="test", mode="test", dependencies=[0, 1], requested=True)]
+        parser = parse_events(*regs, strict=True)
+        self.assertEqual(parser.units[3].dependencies, [0, 1])
+        self.assertEqual(parser.units[0].dependencies, [1])
+        self.assertEqual(parser.units[1].dependencies, [2])
+        edges = {d.dep_index: d for d in parser.units[3].effective_dependencies}
+        self.assertEqual((edges[0].required_artifact, edges[0].certainty, edges[0].is_synthetic),
+                         ("unknown", "unknown", False))
+        self.assertEqual((edges[1].required_artifact, edges[1].certainty, edges[1].is_synthetic),
+                         ("all", "known", False))
+        # All is the artifact requirement if this candidate is present; it does
+        # not override the model's conservative certainty about queue membership.
+        self.assertEqual((edges[2].required_artifact, edges[2].certainty, edges[2].is_synthetic),
+                         ("all", "unknown", True))
+        self.assertTrue(all(u.unblocked_by is None for u in parser.units.values()))
+        diagnostic = next(d for d in parser.inference_diagnostics if d.startswith("Unit 3:"))
+        self.assertIn("artifact-dependency flags", diagnostic)
+        self.assertIn("not an exact queue graph", diagnostic)
+
+        times = [event("unit-started", 2, .1), event("unit-rmeta-finished", 2, .2, unblocked=[1]),
+                 event("unit-started", 1, .21), event("unit-finished", 1, .4),
+                 event("unit-finished", 2, .5, unblocked=[0, 3]), event("unit-started", 0, .51),
+                 event("unit-started", 3, .52), event("unit-finished", 3, .7),
+                 event("unit-finished", 0, .8)]
+        parser = parse_events(*regs, *times, strict=True)
+        analyzer = CriticalPathAnalyzer(parser)
+        chain = analyzer.compute_critical_path()
+        self.assertEqual(chain.status, "complete")
+        self.assertEqual([s.unit_index for s in chain.segments], [2, 3])
+        self.assertEqual(chain.segments[-1].unblocker_relationship, "unknown")
+        self.assertEqual(chain.segments[-1].unblocked_by_index, 2)
+        self.assertIn(diagnostic, format_text_report(parser, analyzer, {}, chain))
+
+    def test_documentation_scraping_keeps_a_binary_dependency(self):
         parser = parse_events(registration(0, kind="bin", mode="docscrape"),
-                              registration(1, mode="test", dependencies=[0]))
-        self.assertEqual(parser.units[1].effective_dependencies[0].required_artifact, "all")
+                              registration(1, mode="doc", dependencies=[0]), strict=True)
+        edge, = parser.units[1].effective_dependencies
+        self.assertEqual((edge.required_artifact, edge.certainty), ("all", "known"))
 
     def test_mixed_sessions_are_excluded_including_future_events(self):
         events = [dict(registration(0), run_id="first"), dict(registration(1), run_id="second"),
@@ -576,6 +629,66 @@ class TestAuditBoundaries(unittest.TestCase):
         self.assertEqual(result.status, "incomplete")
         self.assertFalse(serialize_analysis(parser, {}, result)["input_valid"])
         self.assertIn("Mixed sessions", format_text_report(parser, CriticalPathAnalyzer(parser), {}, result))
+
+    def test_consistent_session_identity_accepts_known_and_future_events(self):
+        for run_id in (None, "session"):
+            with self.subTest(run_id=run_id):
+                events = [registration(0, requested=True), dict(reason="future-event"),
+                          event("unit-started", 0, .1), event("unit-finished", 0, .3)]
+                if run_id is not None:
+                    events = [dict(record, run_id=run_id) for record in events]
+                for strict in (False, True):
+                    parser = parse_events(*events, strict=strict)
+                    self.assertEqual(parser.session.run_id, run_id)
+                    self.assertEqual(parser.malformed_lines, [])
+                    self.assertEqual(parser.unrecognized_events, ["future-event"])
+                    chain = CriticalPathAnalyzer(parser).compute_critical_path()
+                    self.assertEqual(chain.status, "complete")
+                    self.assertAlmostEqual(chain.total_execution_duration, .2)
+
+    def test_identified_sessions_exclude_missing_or_invalid_ids_before_mutation(self):
+        for identity in ({}, {"run_id": ""}, {"run_id": None}, {"run_id": 0}, {"run_id": False}):
+            for record in (registration(1, dependencies=[0]), event("unit-started", 0, .05),
+                           dict(reason="future-event")):
+                with self.subTest(identity=identity, reason=record["reason"]):
+                    events = [dict(registration(0), run_id="session"), dict(record, **identity),
+                              dict(event("unit-started", 0, .1), run_id="session"),
+                              dict(event("unit-finished", 0, .3), run_id="session")]
+                    with self.assertRaisesRegex(LogParseError, "run_id"):
+                        parse_events(*events, strict=True)
+                    parser = parse_events(*events)
+                    self.assertEqual(parser.session.run_id, "session")
+                    self.assertEqual(set(parser.units), {0})
+                    self.assertEqual(parser.units[0].dependencies, [])
+                    self.assertEqual(parser.units[0].start_elapsed, .1)
+                    self.assertIsNone(parser.units[0].unblocked_by)
+                    self.assertEqual(parser.unrecognized_events, [])
+                    self.assertEqual(len(parser.malformed_lines), 1)
+                    analyzer = CriticalPathAnalyzer(parser)
+                    chain = analyzer.compute_critical_path()
+                    self.assertEqual(chain.status, "incomplete")
+                    data = serialize_analysis(parser, {}, chain)
+                    self.assertFalse(data["input_valid"])
+                    self.assertIn("run_id", data["diagnostics"]["malformed_lines"][0][2])
+                    self.assertIn("run_id", format_text_report(parser, analyzer, {}, chain))
+
+    def test_unidentified_prefix_cannot_be_adopted_by_a_later_session(self):
+        events = [registration(0), dict(registration(1), run_id="later"),
+                  dict(reason="future-event", run_id="later"),
+                  event("unit-started", 0, .1), event("unit-finished", 0, .3)]
+        with self.assertRaisesRegex(LogParseError, "unidentified prefix"):
+            parse_events(*events, strict=True)
+        parser = parse_events(*events)
+        self.assertIsNone(parser.session.run_id)
+        self.assertEqual(set(parser.units), {0})
+        self.assertEqual(parser.unrecognized_events, [])
+        self.assertEqual(len(parser.malformed_lines), 2)
+        self.assertAlmostEqual(parser.units[0].duration, .2)
+        # A rejected first payload must not choose the identity of valid records.
+        malformed = dict(reason="unit-started", index=0, run_id="rejected")
+        parser = parse_events(malformed, registration(0))
+        self.assertIsNone(parser.session.run_id)
+        self.assertEqual(set(parser.units), {0})
 
     def test_duplicate_and_conflicting_registrations_preserve_first_record(self):
         for duplicate in (registration(0), registration(0, name="different")):

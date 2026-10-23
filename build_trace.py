@@ -30,6 +30,8 @@ class UnblockEvent:
 
 @dataclass
 class EffectiveSchedulingDep:
+    """A queue candidate; an artifact can be known conditionally on its presence."""
+
     dep_index: int
     required_artifact: str  # "metadata" | "all" | "unknown"
     is_synthetic: bool      # Transitive candidate absent from registered direct edges
@@ -329,6 +331,7 @@ class BuildAnalysisParser:
         self.validation_errors: List[str] = []
         self.inference_diagnostics: List[str] = []
         self._session_events: Set[str] = set()
+        self._unidentified_session = False
         self.total_lines = 0
 
     def parse_file(self, file_path: Path | str) -> BuildAnalysisParser:
@@ -385,12 +388,19 @@ class BuildAnalysisParser:
             if "run_id" in raw_entry:
                 if not isinstance(run_id, str) or not run_id:
                     raise ValueError("Invalid run_id")
-                if self.session.run_id is None:
-                    self.session.run_id = run_id
-                elif run_id != self.session.run_id:
+                if self._unidentified_session:
+                    raise ValueError("Identified record after an unidentified prefix; event excluded")
+                if self.session.run_id is not None and run_id != self.session.run_id:
                     raise ValueError(f"Mixed sessions: expected run_id {self.session.run_id!r}, got {run_id!r}; event excluded")
+            elif self.session.run_id is not None:
+                raise ValueError(f"Missing run_id for identified session {self.session.run_id!r}; event excluded")
             self._validate_event(reason, raw_entry)
             self._handle_event(reason, raw_entry)
+            # Only accepted records establish the session's identity policy.
+            if run_id is None:
+                self._unidentified_session = True
+            else:
+                self.session.run_id = run_id
         except (KeyError, TypeError, ValueError, OverflowError) as e:
             msg = f"Malformed payload for reason '{reason}': {e}"
             self.malformed_lines.append((line_no, raw_line, msg))
