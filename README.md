@@ -1,167 +1,113 @@
 # Cargo Build Trace
 
-Cargo already exposes quite a bit of build information through `-Zbuild-analysis`. I wanted to see how far that data could go in explaining incremental rebuilds, particularly which dependency chains end up delaying a build.
+A small Python experiment around Cargo's unstable `-Zbuild-analysis` logs. I wanted to see how far the existing events could answer two questions:
 
-This started as a small experiment to reconstruct those chains from the existing logs before asking Cargo to record anything new.
+- Why did Cargo rebuild this unit?
+- Which work contributed to the selected target's completion time?
 
-## What this is
-
-This tool is a standalone Python script that consumes a Cargo `-Zbuild-analysis` JSONL session log and attempts to answer two practical questions:
-
-1. **Why did a unit rebuild?** (Tracing the chain of invalidation from a target binary back to the root source change or configuration delta).
-2. **Which work contributed to the observed build completion time?** (Reconstructing the observed sequence of task unblocking events that led to the final target completing).
-
-These two questions are related, but they are not the same thing. A crate can trigger a rebuild without being on the longest execution path, and a crate on the critical path might simply be compiling slowly rather than causing downstream invalidations.
+The rebuild pointers are useful. Reconstructing scheduling turned out to need more care: the registered unit graph, scheduler prerequisites, and observed unblocking events describe different things.
 
 ## Why I started looking into this
 
-When a build feels sluggish after editing a file, `cargo build` doesn't tell you much beyond a list of compiling crates. Cargo's existing `-Zbuild-analysis` logs (tracked under [rust-lang/cargo#15844](https://github.com/rust-lang/cargo/issues/15844)) provide structured telemetry about rebuild reasons and compilation timings, but interpreting them during parallel builds is tricky:
+Cargo already records structured build metrics under [`-Zbuild-analysis`](https://github.com/rust-lang/cargo/issues/15844). The tracking issue links the original [build-analysis goal](https://github.com/rust-lang/goals/issues/332) and the ongoing discussion. Rather than start by asking for more instrumentation, I tried analyzing what Cargo already writes.
 
-- Summing compilation times does not equal wall-clock time because crates compile in parallel.
-- Metadata pipelining means downstream crates start compiling once upstream emits `.rmeta`, before codegen or linking finishes.
-- Linkable targets (like binaries) synthesize extra scheduling dependencies on transitive crates that do not appear as direct dependencies in the manifest.
-- When multiple dependency branches rebuild, identifying which branch actually dictated completion time requires following the unblocking sequence.
+This repository contains the analyzer, a six-crate workspace, captured sessions, and a validation harness. [FINDINGS.md](FINDINGS.md) has the source audit, measurements, and remaining questions.
 
-Before proposing any new Cargo logging events, I wanted to see how much of this could already be reconstructed reliably from existing logs, and where the data genuinely runs out.
+## What the prototype does
 
-## What the prototype currently does
+`build_trace.py` keeps four relationships separate:
 
-The prototype (`build_trace.py`) parses a `-Zbuild-analysis` log and performs:
+- **Registered dependencies:** unit indices from `unit-registered`. This is Cargo's unit graph, including compilation modes and build-related units, rather than just manifest dependencies.
+- **Inferred scheduling prerequisites:** artifact requirements and possible transitive linking edges. Each edge has a certainty value. These are not a complete reconstruction of Cargo's queue.
+- **Observed unblocking events:** the predecessor that made the remaining scheduler prerequisites disappear, where Cargo logged that transition.
+- **Fingerprint causes:** explicit dependency pointers and local invalidation reasons from `unit-fingerprint`.
 
-- **Graph disambiguation**: Separates three distinct dependency graphs:
-  - *Registered direct dependencies*: the crate edges declared in `unit-registered`.
-  - *Effective scheduling prerequisites*: the full set of requirements enforced by Cargo's queue (including pipelined metadata vs. full artifact needs, and synthetic link dependencies for binaries).
-  - *Rebuild causality*: explicit dependency pointers recorded in fingerprint causes (`UnitDependencyInfoChanged`, `StaleDependency`, `StaleDepFingerprint`).
-- **Rebuild reason tracing**: Follows explicit dependency invalidations recursively to identify the root file modification or configuration change. If a chain terminates at a unit with a generic reason (e.g., `nothing-obvious`) while dependencies rebuilt, it flags the cause as ambiguous rather than guessing.
-- **Observed unblocking chain reconstruction**: Walks backward from the terminal target along recorded `unblocked` events, accounting for metadata pipelining (rmeta duration vs. full crate duration).
-- **Delay attribution**: Measures the ready-to-start delay between when a unit is unblocked and when it begins executing.
-- **Missing telemetry diagnostics**: Flags when unblocking events are omitted (such as when all dependencies are fresh/cached).
-- **Dual output**: Generates readable plain text reports or structured JSON (`--format json`).
+Starting from a selected target, the analyzer follows recorded unblockers backward. It uses metadata completion when that event unblocked the next unit, and full completion otherwise. Each segment includes its execution interval and, when observed, its unblock-to-start gap.
+
+This is an **observed dependency-unblocking chain**, not a full resource-constrained critical path. A delay can include other work that isn't on this chain. Missing events remain unknown; incomplete or inconsistent chains don't get a definitive total.
 
 ## Getting started
 
-### Requirements
+Python 3.9 or later is enough for analysis and tests. There are no third-party Python dependencies or installation steps. Generating new logs also needs a Cargo nightly with `-Zbuild-analysis` support; an older nightly may not have the current schema.
 
-- Python 3.9+ (standard library only, no external packages required).
-- Rust nightly toolchain (e.g. `cargo +nightly` or setting `RUSTC_BOOTSTRAP=1` on dev builds) to enable `-Zbuild-analysis`.
-
-### Generating a log
-
-Configure Cargo to enable build analysis:
+Enable logging and build your project:
 
 ```bash
-# In your project's .cargo/config.toml
-[build.analysis]
-enabled = true
+CARGO_BUILD_ANALYSIS_ENABLED=true cargo +nightly build -Zbuild-analysis
 ```
 
-Or set the environment variable:
+Cargo writes sessions to `$CARGO_HOME/log/`, normally `~/.cargo/log/`. You can also enable `[build.analysis] enabled = true` in Cargo's config. The recorded validation sessions used Cargo/rustc 1.99.0 with `RUSTC_BOOTSTRAP=1`; that's a local test setup, not a requirement for analyzing those files.
+
+From this repository, try the saved shared-dependency edit:
 
 ```bash
-export CARGO_BUILD_ANALYSIS_ENABLED=true
-```
+python3 build_trace.py validation_output/4_shared_dep_modification/4_shared_dep_modification_session.jsonl --strict
 
-Run a build with `-Zbuild-analysis`:
+# Structured output, or select a particular session-local unit index
+python3 build_trace.py validation_output/4_shared_dep_modification/4_shared_dep_modification_session.jsonl --format json
+python3 build_trace.py validation_output/4_shared_dep_modification/4_shared_dep_modification_session.jsonl --target 0
 
-```bash
-cargo +nightly build -Zbuild-analysis
-```
+# Stdin works too
+cat validation_output/4_shared_dep_modification/4_shared_dep_modification_session.jsonl | python3 build_trace.py -
 
-Cargo writes session logs to `~/.cargo/log/<run_id>.jsonl`.
-
-### Running the analyzer
-
-Analyze the latest log:
-
-```bash
-# Run the analyzer on a specific log file
-python3 build_trace.py ~/.cargo/log/<run_id>.jsonl
-
-# Or pipe a log directly via stdin
-cat ~/.cargo/log/<run_id>.jsonl | python3 build_trace.py -
-
-# Specify a target unit index if multiple targets built
-python3 build_trace.py ~/.cargo/log/<run_id>.jsonl --target 0
-
-# Emit structured JSON
-python3 build_trace.py ~/.cargo/log/<run_id>.jsonl --format json
-```
-
-### Running tests and validation
-
-```bash
-# Run independent unit and synthetic graph tests
 python3 -m unittest discover -s tests
-
-# Run reproducible validation scenarios in an isolated workspace
-python3 scripts/run_validation_scenarios.py
 ```
 
-## Example output
+For your own session, substitute its JSONL path. `--strict` rejects malformed records, mixed sessions, and invalid references or timelines. Without it, offending records are excluded where possible and diagnostics remain in text and JSON. Unknown future event types are ignored without invalidating the input. This is a reconstruction validator, not a complete implementation of Cargo's serde schema.
 
-### Rebuild reason attribution
+By default, selection prefers the latest completed requested target. If requested work is incomplete, the report says so; explicit `--target` also works for a fresh or unstarted unit. Selecting one target doesn't imply that all other Cargo work had finished.
 
-From a scenario where `string_parser/src/lib.rs` was edited:
+Run the six real scenarios with:
+
+```bash
+# Choose a new output directory for each run.
+python3 scripts/run_validation_scenarios.py --output-dir /tmp/cargo-trace-validation-run
+```
+
+The harness uses the `cargo` on `PATH` and sets `RUSTC_BOOTSTRAP=1` for the local experiment. It copies the workspace to a temporary directory and uses a private `CARGO_HOME`. A nonempty output directory is rejected so old artifacts can't pass for a new run. A failed scenario stops the run; `all_scenarios_summary.json` is written only after all six pass.
+
+## A small example
+
+In the saved `4_shared_dep_modification` session, editing `string_parser/src/lib.rs` caused this explicit fingerprint chain:
 
 ```text
-## 4. REBUILD REASON ATTRIBUTION CHAINS
-  * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=dirty [CONFIRMED_EXPLICIT]:
-      Causal Chain: unit 0 (cli_app) -> unit 4 (orchestrator) -> unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /path/to/string_parser/src/lib.rs
-      Invalidating File Path:  /path/to/string_parser/src/lib.rs
-
-  * Unit 5 [string_parser v0.1.0] status=dirty [LOCAL_INVALIDATION]:
-      Causal Chain: unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /path/to/string_parser/src/lib.rs
-      Invalidating File Path:  /path/to/string_parser/src/lib.rs
+cli_app (unit 0) -> orchestrator (unit 4) -> string_parser (unit 5)
 ```
 
-Every step in this chain was backed by an explicit pointer in Cargo's `DirtyReason` telemetry.
+The final reason includes the changed source path and reference-file metadata. No static-graph guess was needed to follow those pointers.
 
-### Observed unblocking chain
+For `cli_app`, the observed completion chain is:
 
-For the same build:
+| Unit | Contribution ends at | Start | End | Relationship to its unblocker |
+| --- | --- | ---: | ---: | --- |
+| `string_parser` | metadata | 0.010858 s | 0.031544 s | none logged; dependencies were fresh |
+| `orchestrator` | full finish | 0.031769 s | 0.058517 s | direct (`string_parser`) |
+| `cli_app` | full finish | 0.058750 s | 0.138436 s | direct (`orchestrator`) |
 
-```text
-## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN
-  Target Unit: cli_app v0.1.0 (cli_app:bin) (index 0, selection: requested_target)
+`orchestrator` started before `string_parser` fully finished. The `orchestrator → cli_app` edge is direct. An earlier report incorrectly labelled it synthetic because the label was attached to the wrong chain segment.
 
-  Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Ready Delay  Unblocked By
-  --------------------------------------------------------------------------------------------------------------
-   1    string_parser v0.1.0         rmeta    0.014      0.038      0.024     s 0.001      s DAG root / initial
-        Note: Unblocked by fresh dependencies (Cargo omits unblock events for fresh units)
-   2    orchestrator v0.1.0          finish   0.038      0.063      0.025     s 0.000      s unit 5 (rmeta @ 0.038s) (direct)
-   3    cli_app v0.1.0 (cli_app:bi   finish   0.063      0.141      0.078     s 0.000      s unit 4 (finish @ 0.063s) (synthetic/indirect)
-```
+A different final unblocker is possible. In the saved `5b_clean_build_j8` session, `string_parser` finished last among `cli_app`'s prerequisites and directly unblocked it in the queue. That relationship is inferred to be a synthetic linking edge: `cli_app` only lists `orchestrator` in its registered dependencies.
 
-Notice:
-- Step 1 to Step 2 uses `rmeta` at `0.038s`: `orchestrator` started compiling as soon as `string_parser` produced metadata, while `string_parser` continued codegen until `0.051s`.
-- `string_parser` unblocked `cli_app` in Cargo's queue via synthetic linking dependencies, but `orchestrator` was the final requirement satisfied.
+## What we found
 
-## What the logs don't tell us yet
+- Explicit fingerprint pointers can lead to a specific changed file, but generic dirty reasons don't establish a root cause. Forced rebuilds have a known category without identifying an ordinary invalidating input.
+- The logged `lib` kind loses crate types, including the difference between `rlib`, `cdylib`, and `staticlib`. The logged `check` mode loses its test flag. Exact scheduler inference isn't possible in every case.
+- Cargo can add transitive full-artifact prerequisites for targets that need upstream objects. Its traversal also handles overlapping direct edges; it isn't simply an unrestricted transitive closure.
+- Fresh units don't have the start/finish/unblock events used here. Their dependencies and fingerprint status remain visible, but their readiness transitions aren't timed.
+- An unblock-to-start gap is measurable. Jobserver waiting, dispatch, priority, event-loop handling, and process overhead aren't separately attributable from these events.
 
-Working through the implementation and logs revealed a few places where the data does not provide full answers:
+The initial interval from unit-graph completion to the first chain start is reported separately with readiness unknown. It isn't included in measured ready gaps or the chain span. A no-change build has no executed chain; it still takes wall-clock time.
 
-1. **Fresh units emit no unblocking events**: When a unit is up-to-date (cached), Cargo processes it on the main thread and skips timing event emission. If a rebuilding crate depends on cached crates, it has no unblocker recorded in the log. The analyzer knows it had fresh dependencies, but the exact timestamp when it became ready cannot be observed.
-2. **Ready-to-start delays cannot be attributed**: When a crate becomes ready at $t_1$ and starts at $t_2$, the delay $t_2 - t_1$ is measurable. However, Cargo does not log jobserver token acquisitions or queue state. We cannot distinguish whether the crate was waiting for an available CPU core / job token, delayed by OS process spawning, or held behind higher-priority crates in the queue.
-3. **Synthetic scheduling edges are unlogged**: When compiling linkable outputs, Cargo synthesizes full-compilation dependencies on transitive crates. These appear in `unblocked` lists, but the edges themselves are not registered in `unit-registered`, requiring post-hoc inference.
-4. **Non-specific dirty causes**: If a unit reports `nothing-obvious` or `stale` without details, and multiple dependencies rebuilt, log data cannot prove which dependency caused the invalidation.
+## Validation and limits
 
-## Validation
+The six scenarios cover clean and no-change builds, leaf and shared-dependency edits, and clean builds with `-j 1` and `-j 8`. The harness compares each executed unit's start and duration against `cargo report timings -Zbuild-analysis --id <run_id>` for the same session. Both consume the same JSONL, so agreement checks our interpretation against Cargo's renderer; it isn't an independent measurement of compiler runtime or proof of the whole scheduling graph.
 
-The repository includes a validation harness (`scripts/run_validation_scenarios.py`) that runs 6 distinct scenarios against an isolated copy of `test_workspace/`:
+All 23 executed-unit comparisons in the saved sessions agree within 0.02 s. The no-change session compares zero units and reports N/A. Deterministic tests cover graph boundaries, different final unblockers, missing events, parser recovery, and broken fingerprint chains.
 
-1. Clean build (all units new)
-2. No-change rebuild (all units fresh)
-3. Leaf modification (`leaf_tool` modified)
-4. Shared dependency modification (`string_parser` modified)
-5. Serialized clean build (`-j 1`)
-6. Parallel clean build (`-j 8`)
-
-The harness cross-checks the analyzer's start times and durations against Cargo's internal HTML report generator (`cargo report timings -Zbuild-analysis`). In all executed scenarios, the reconstructed unit durations and start times match Cargo's internal numbers within 0.02s tolerance.
-
-In addition, `tests/test_analyzer.py` contains 16 synthetic tests with manually derived expected values covering edge cases like broken pointers, inverted timestamps, metadata pipelining, and synthetic edges.
+These builds last milliseconds. Individual `-j` observations aren't benchmarks, and observing pipelining doesn't measure its performance benefit. No controlled non-pipelined baseline was collected.
 
 ## Current status
 
-This repository is an exploratory research prototype. Its main goal is to document what is already possible with Cargo's existing `-Zbuild-analysis` telemetry and identify the minimum missing instrumentation worth taking upstream to the Cargo team.
+This is an experimental analyzer intended to make a Cargo discussion more concrete. The supported output is useful with its uncertainty labels and diagnostics. It cannot yet answer everything that determined a build's completion time.
+
+The clearest instrumentation question is whether Cargo should expose otherwise missing readiness transitions from fresh units. [FINDINGS.md](FINDINGS.md) weighs that against documentation and other possible additions. No Cargo patch is included here.

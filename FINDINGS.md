@@ -1,163 +1,136 @@
-# Technical Findings: Incremental Build Critical-Path Analysis via Cargo `-Zbuild-analysis`
+# Cargo build-analysis investigation
 
-## Context & Objectives
+The useful result so far is narrower than the original critical-path claim: explicit fingerprint pointers can explain some rebuilds, and timing/unblocking events describe one observed chain into a selected target. They do not expose the whole resource-constrained schedule.
 
-Cargo's unstable `-Zbuild-analysis` flag (tracking issue [rust-lang/cargo#15844](https://github.com/rust-lang/cargo/issues/15844), based on RFC 3493) persists build metrics as session-keyed JSONL files in `~/.cargo/log/`.
+This is feedback for the [`-Zbuild-analysis` tracking issue](https://github.com/rust-lang/cargo/issues/15844), whose description links the original [build-analysis goal and discussion](https://github.com/rust-lang/goals/issues/332). No upstream changes are implemented here.
 
-This investigation evaluated whether these logs contain sufficient telemetry to:
-1. Reconstruct incremental build critical paths under metadata pipelining.
-2. Attribute incremental rebuild costs to root invalidation causes.
-3. Quantify scheduling and concurrency bottlenecks.
+## Directly observed
 
-The findings below are divided into:
-- **Directly Observed Facts** (verified from real JSONL logs).
-- **Behavior Verified Against Cargo Source** (confirmed by reading `rust-lang/cargo` compiler code).
-- **Inferences Supported by Experiments** (demonstrated across our 6 validation scenarios).
-- **Unresolved Questions** (where current log telemetry runs out).
-- **Possible Upstream Improvements** (targeted, minimal changes with compatibility and overhead assessments).
+### Evidence and toolchains
 
----
+`validation_output/` contains six original JSONL sessions and their Cargo-generated timing HTML. Their logs record rustc **1.99.0**, commit `b940084d7eb6a299eb4bfeb8e34901bc051e7ac4`. They do not record Cargo's own version or commit. The build commands identify a stable toolchain path, but that alone cannot prove which Cargo revision produced them.
 
-## 1. Directly Observed Facts
+During this audit, the installed Cargo was **1.99.0**, commit `5f94df4789f005f9a352888e8355ffc645b7ed0e`. I used that exact source revision as the baseline and compared the relevant implementation with upstream `master` resolved on 2026-10-23 to `07999b69c031c29852957e6d6eafc117c9310a94` (2026-10-22). This bounds the source comparison; it isn't a guarantee about future Cargo versions.
 
-From inspecting generated `-Zbuild-analysis` logs across clean builds, no-change rebuilds, and incremental changes:
+The original JSONL and HTML files were retained. Derived text, analysis JSON, and summary files were regenerated with the corrected analyzer. New six-scenario runs used isolated temporary workspaces and private `CARGO_HOME` directories; their summaries also capture `cargo -vV`. These additional runs were correctness checks, not a benchmark series.
 
-1. **Exact Start, Metadata, and Completion Timestamps**:
-   - `unit-started`, `unit-rmeta-finished`, and `unit-finished` log an `elapsed: f64` timestamp (seconds since build invocation).
-   - For executed units, unit compilation duration (`finish_elapsed - start_elapsed`) and rmeta duration (`rmeta_elapsed - start_elapsed`) are directly observable and match the centisecond values rendered in Cargo's `--timings` HTML reports within declared rounding tolerances.
+### What the saved sessions contain
 
-2. **Explicit Dependency Invalidation Pointers**:
-   - When a crate is rebuilt because a dependency changed, `unit-fingerprint`'s `cause` contains structured session-local `UnitIndex` references:
-     - `{"dirty_reason": "unit-dependency-info-changed", "unit": <idx>}`
-     - `{"dirty_reason": "fs-status-outdated", "fs_status": "stale-dep-fingerprint", "unit": <idx>}`
-     - `{"dirty_reason": "fs-status-outdated", "fs_status": "stale-dependency", "unit": <idx>}`
-   - When a crate is rebuilt due to a modified source file, the file path, reference artifact path, and file modification timestamps are recorded directly in `cause`:
-     ```json
-     {
-       "dirty_reason": "fs-status-outdated",
-       "fs_status": "stale-item",
-       "stale_item": "changed-file",
-       "stale": "/path/to/src/lib.rs",
-       "stale_mtime": 1792703020682.713,
-       "reference": "/path/to/.fingerprint/.../dep-lib-...",
-       "reference_mtime": 1792703020276.0693
-     }
-     ```
+- Executed units have `unit-started`, sometimes `unit-rmeta-finished`, and `unit-finished` elapsed times. Completion events include the units unblocked by that transition.
+- No-change builds contain registrations and fresh fingerprints but no unit execution events. There is no executed chain to time. This says nothing about total invocation time being zero.
+- Dirty fingerprints can contain explicit unit pointers, or a local stale input with its path, reference artifact, stale-item category, and modification times. Modification times in these records are epoch **milliseconds**, not elapsed seconds.
+- The shared-edit session records `cli_app → orchestrator → string_parser` through explicit fingerprint pointers, terminating at the edited source file.
+- In that same session, metadata from `string_parser` unblocks `orchestrator`; full completion of `orchestrator` unblocks `cli_app`. Both relationships are registered direct dependencies. The earlier text report's synthetic label on the latter edge was wrong.
+- In the saved `5b_clean_build_j8` session, `string_parser` instead supplies the final observed unblock for `cli_app`, despite being transitive in its registered graph. The final blocker can change across runs.
 
-3. **Dynamic Unblocking Lists**:
-   - `unit-rmeta-finished` and `unit-finished` carry an `unblocked: Vec<UnitIndex>` field listing units whose remaining dependency count dropped to zero upon that completion.
+### Saved measurements, with the denominator made explicit
 
-4. **Fresh Units Emit No Timing Events**:
-   - In a no-change rebuild, `unit-registered` and `unit-fingerprint { status: "fresh" }` are emitted, but no `unit-started`, `unit-rmeta-finished`, or `unit-finished` events appear.
+These numbers are derived from [`all_scenarios_summary.json`](validation_output/all_scenarios_summary.json). The span begins at the **first observed start on the selected chain** and ends at the selected target's finish. Measured gaps require an actual unblock event. The initial graph-to-start interval has unknown readiness and is excluded from both.
 
----
+| Saved scenario | Executed units | Chain span (s) | Chain execution (s) | Measured gaps (s) | Initial interval, readiness unknown (s) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial clean build | 6 | 0.192846 | 0.192484 | 0.000361 | 0.001269 |
+| No-change rebuild | 0 | N/A | N/A | N/A | N/A |
+| Leaf edit | 1 | 0.057264 | 0.057264 | 0 | 0.000821 |
+| Shared dependency edit | 4 | 0.127578 | 0.127120 | 0.000458 | 0.000846 |
+| Clean `-j 1` | 6 | 0.491158 | 0.230687 | 0.260471 | 0.001415 |
+| Clean `-j 8` | 6 | 0.223190 | 0.222729 | 0.000461 | 0.001110 |
 
-## 2. Behavior Verified Against Cargo Source
+The old `-j 1` total was 0.492573 s, with 0.261886 s labelled ready delay. Both included the 0.001415 s initial interval. The execution measurement, 0.230687 s, is unchanged. Under the corrected definition, measured gaps are **53.03% of that observed chain's span**. They are not a measured percentage of total Cargo wall time.
 
-Inspection of the Cargo codebase (`src/compiler/job_queue/mod.rs`, `src/compiler/timings/mod.rs`, `src/compiler/build_runner/mod.rs`, `src/compiler/fingerprint/mod.rs`) established the concrete mechanics behind these observations:
+The harness compared 23 executed units with Cargo's timing HTML: all starts and durations agreed within 0.02 s. Zero units were compared for the no-change scenario, so its timing agreement is N/A. HTML and analyzer consume the same JSONL; this checks interpretation and rendering, not an independent clock or complete scheduling correctness. Cargo rounds to centiseconds; no timestamp tolerance is applied to raw JSONL consistency checks.
 
-### A. The Synthetic Scheduling Dependency Rule
-- **Source**: `src/compiler/job_queue/mod.rs:430-468` and `src/compiler/crate_type.rs:70`.
-- In `UnitRegistered`, Cargo logs only direct declared dependencies (`dependencies: Vec<UnitIndex>`).
-- However, when enqueuing work into the internal `DependencyQueue`, Cargo checks `unit.requires_upstream_objects()`. For non-rlib targets (binaries, integration tests, cdylibs), linking requires full upstream object files (`.rlib`), not just `.rmeta`.
-- Because pipelining allowed intermediate libraries to depend only on `.rmeta`, Cargo runs `depend_on_deps_of_deps`: it walks all transitive dependencies of the linkable target and synthesizes direct `(dep, Artifact::All)` edges.
-- **Why this matters**: In our test workspace, `cli_app` depends directly on `orchestrator`, which depends on `string_parser`. In the log, `string_parser` emits `UnitFinished` with `unblocked: [cli_app, leaf_tool]`. `cli_app` was unblocked by a transitive crate that was never listed in `cli_app`'s `unit-registered.dependencies`. Downstream analyzers that assume `unblocked` must be a direct registered dependency will find the data contradictory unless they account for Cargo's linkable synthetic dependencies.
+These tiny builds are noisy. The `-j` figures above are individual observations, not an estimate of speedup. Pipelining is observable, but there was no controlled non-pipelined baseline from which to measure its benefit.
 
-### B. Why Fresh Units Omit Unblock Telemetry
-- **Source**: `src/compiler/job_queue/mod.rs:1008-1035`, `src/compiler/job_queue/mod.rs:1190-1215`, and `src/compiler/timings/mod.rs:155-195`.
-- Fresh units run synchronously on the main thread via `state.run_to_finish(job)` without spawning a worker thread or requesting a job token.
-- Fresh jobs do not emit `Message::Run`, so `Timings::unit_start` is never called, and the unit is not added to `Timings.active`.
-- When the fresh job completes, `JobQueue::finish()` calls `self.queue.finish(unit, &artifact)`. The internal dependency queue removes the edge and correctly computes `unblocked: Vec<&Unit>`.
-- However, `JobQueue::finish()` then passes `unblocked` to `timings.unit_finished()` or `timings.unit_rmeta_finished()`. In both methods, the very first line is:
-  ```rust
-  let Some(unit) = self.active.remove(&id) else {
-      return;
-  };
-  ```
-  Because `id` is not in `self.active`, the method returns immediately. The `unblocked` slice is discarded, and no `UnitFinished` log message is written.
-- **Consequence**: When an incremental build rebuilds a leaf or middle crate whose dependencies were cached/fresh, the rebuilt unit begins compiling without any recorded unblock event in the log.
+## Verified against Cargo source
 
----
+The following links are pinned to the audited Cargo 1.99.0 revision. I read the relevant producers, consumers, and queue/timing callers rather than deriving the rules from the fixture outputs.
 
-## 3. Inferences Supported by Experiments
+| Source | Contract relevant to this analyzer |
+| --- | --- |
+| [`UnitInner::requires_upstream_objects`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/unit.rs#L149), [`TargetKind`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/workspace/manifest.rs#L275), [`CrateType`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/crate_type.rs#L70) | Test-like modes require objects. Library/example output requirements depend on their crate types; `lib`/`rlib` differ from other crate types. Non-build mode alone doesn't imply this property. |
+| [`BuildRunner::only_requires_rmeta`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/build_runner/mod.rs#L765) | A metadata scheduler edge requires **both** units to be in Build mode and **neither** to require upstream objects. `Artifact::All` in check mode describes queue completion, not necessarily the production of object files. |
+| [`JobQueue::enqueue`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L401) | Direct bin/test dependencies are filtered unless they are artifact dependencies or doc-scrape work. If the parent requires upstream objects, traversal inserts transitive `All` requirements. |
+| [`depend_on_deps_of_deps`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L458) | The recursion traverses the original unit dependencies, including those filtered from the initial queue map. Inserting an existing key overwrites its artifact requirement with `All` and stops recursion at that key. An overlapping edge remains a registered direct relationship. |
+| [`DependencyQueue::finish`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/util/dependency_queue.rs#L181), [`DrainState::finish`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L1186) | Finish removes a `(unit, artifact)` prerequisite. The returned units have no remaining prerequisites and are passed to the corresponding timing logger. An unblocking list identifies a final satisfied prerequisite, not every dependency completion. |
+| [`unit_start`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/timings/mod.rs#L120), [`unit_rmeta_finished`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/timings/mod.rs#L152), [`unit_finished`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/timings/mod.rs#L178) | Start inserts the timed job into `Timings.active`; metadata completion uses `get`, full completion uses `remove`. Both completion methods return without logging if the job was not timed. The previous findings incorrectly described both as `remove`. |
+| [`spawn_work_if_possible`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L557), [`Message::Run`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L618), [`run`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/job_queue/mod.rs#L989) | Dequeue, pending-queue insertion, token requests, dispatch, and receipt of a Run message are separate transitions. Fresh jobs execute synchronously and don't produce the timed Run transition. They still go through queue/dispatch handling; the earlier claim that they never encounter token gating was too strong. |
+| [`UnitRegistered` population](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/ops/cargo_compile/mod.rs#L547), [`Target` conversion](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/util/log_message.rs#L181), [`CompileMode` serialization](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/build_config.rs#L189) | Indices cover the finalized unit graph; registrations preserve direct unit dependencies. Target conversion collapses all library crate types to `lib` and both example kinds to `example`. Mode serialization collapses check-test and ordinary check to `check`. Artifact-dependency flags are absent. |
+| [`write_json_log`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/util/log_message.rs#L201) | Each serialized event has a run ID. Unit indices must not be merged across those session boundaries. |
+| [`prepare_target`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/fingerprint/mod.rs#L459), [`DirtyReason`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/fingerprint/dirty_reason.rs#L17), [`FsStatus`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/fingerprint/mod.rs#L692), [`StaleItem`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/fingerprint/mod.rs#L862) | Fingerprint causes use flattened tagged objects. New builds and fresh units have distinct statuses. Stale items include file, checksum, metadata-read, size, and environment changes. A recognizable variant is not by itself proof of an ordinary root cause. |
+| [`Fingerprint::compare`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/fingerprint/mod.rs#L1221) | A dependency pointer compares the parent's previous dependency fingerprint with the current one. It does not require that dependency to execute in this invocation. A pointer to a currently fresh dependency can therefore be valid while its earlier invalidation is outside this session. |
+| [`cargo report timings`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/ops/cargo_report/timings.rs#L379), [`round_to_centisecond`](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/compiler/timings/report.rs#L567) | The renderer retains started units and rounds starts/durations to centiseconds. It is a useful comparison consumer, but not proof that changing existing finish-event semantics is safe for every consumer. |
 
-Across our 6 validation scenarios in `test_workspace`:
+### What changed after the baseline
 
-1. **Incremental Rebuild Causal Chains Can Be Traced Deterministically**:
-   - In Scenario 4 (`string_parser/src/lib.rs` modified), `cli_app` was dirty because `orchestrator` was dirty (`stale-dep-fingerprint: unit 4`), which in turn was dirty because `string_parser` was dirty (`stale-dep-fingerprint: unit 5`), which in turn was dirty due to `changed-file: /path/to/string_parser/src/lib.rs`.
-   - By following explicit pointers, the root cause was identified without consulting the static DAG or guessing which branch caused the rebuild.
+At the compared [upstream revision](https://github.com/rust-lang/cargo/commit/07999b69c031c29852957e6d6eafc117c9310a94), the object-requirement predicate, metadata predicate, enqueue traversal/filter, readiness result, registration fields, and active-map timing guards have the same relevant behavior. `UnitRegistered` still loses the target/mode details above.
 
-2. **Metadata Pipelining Significantly Shortens the Effective Critical Path**:
-   - In Scenario 1 and 4, downstream libraries started compiling as soon as upstream emitted `.rmeta` (`UnitRmetaFinished`).
-   - Using full crate duration instead of rmeta duration overstates the critical path by the codegen/link time of upstream libraries (in our clean build, `string_parser` unblocked `orchestrator` at 0.038s, whereas full codegen took until 0.051s).
+There are relevant additive/schema changes: [`UnitPeakMemory`](https://github.com/rust-lang/cargo/blob/07999b69c031c29852957e6d6eafc117c9310a94/src/util/log_message.rs) and its timing/report handling are new; [`checksum-use-changed` became `fingerprint-method-changed`](https://github.com/rust-lang/cargo/blob/07999b69c031c29852957e6d6eafc117c9310a94/src/compiler/fingerprint/dirty_reason.rs), with `old` and `new` methods instead of an old boolean. The analyzer ignores the unfamiliar memory event and preserves/classifies both fingerprint variants. This comparison does not claim that every internal fingerprint algorithm or artifact-layout behavior is unchanged.
 
-3. **Concurrency Bottlenecks Appear as Ready-to-Start Delays**:
-   - In Scenario 5a (`-j 1`), cumulative ready-to-start delays accounted for **49.3%** of total build duration (0.341s delay vs 0.350s active execution).
-   - In Scenario 5b (`-j 8`), ready-to-start delays dropped to **1.0%** (0.003s).
-   - While the presence of delay is demonstrable, the exact cause (jobserver token starvation vs process spawning latency) cannot be proven without additional telemetry.
+### An additive event can still break an older report reader
 
----
+I inserted a valid JSON event with an unfamiliar `reason` immediately after `build-started` in a copy of the saved clean-build log. Running installed Cargo 1.99.0's `cargo report timings` against that private log returned exit code 101 with `no timing data found in log`; the valid registrations/timings after the unfamiliar event weren't recovered. The [typed streaming deserializer](https://github.com/rust-lang/cargo/blob/5f94df4789f005f9a352888e8355ffc645b7ed0e/src/ops/cargo_report/timings.rs#L83) attempts to filter parse errors, but that does not establish that it can resume after an unknown enum variant. This test demonstrates a real compatibility concern for additional event kinds. It doesn't establish every reader's behavior. Our analyzer deliberately accepts unknown reasons; a Cargo proposal still needs a policy for older readers, and tests with the event in different stream positions.
 
-## 4. Questions That Are Still Unresolved
+## Inferred, with limits
 
-1. **Job Token Starvation vs. Process Spawn Overhead**:
-   - When a unit has a 0.05s ready-to-start delay under high core counts, is it waiting for a jobserver token, or is the delay caused by `rustc` process creation and dynamic linking? The log records static `jobs: u32` at startup, but no dynamic queue or token states.
-2. **Fresh Unit Verification Cost in Large Workspaces**:
-   - `UnitFingerprint` logs status (`fresh`, `dirty`, `new`), but no timestamps or durations. In a workspace with 500 crates, the wall-clock time spent checking filesystem mtimes and hashes for cached crates cannot be measured from existing events.
-3. **Non-Specific Dirty Invalidation with Multiple Rebuilt Dependencies**:
-   - If a unit reports `nothing-obvious`, `stale`, or `forced`, and multiple upstream dependencies rebuilt, the log provides no mechanism to attribute which dependency caused the invalidation.
+### Scheduling requirements
 
----
+The old predicate, `kind not in ("lib", "rlib") or mode != "build"`, wasn't equivalent to Cargo's. It also conflated object requirements with metadata eligibility. The inference now uses the logged target/mode constraints and a small `known` / `inferred` / `unknown` certainty value.
 
-## 5. Possible Upstream Improvements
+A bin-to-lib edge that survives queue filtering requires `All`. Test and doctest parents also require upstream objects. A check-mode edge cannot be a pipelined Metadata edge, but its parent's object requirement can remain unknown because the check-test flag was lost. Library-to-library Build requirements remain unknown unless other evidence narrows them.
 
-The following improvements would resolve these specific blind spots.
+An observed metadata unblock proves that both endpoints passed Cargo's metadata predicate. The analyzer can use that to narrow those units' object requirements and infer compatible metadata edges. Merely observing a unit produce rmeta is insufficient: other crate types can produce it too. This inference is explicitly based on observed events, not an independent validation of them.
 
-### Proposal 1: Log Unblocking Events for Fresh Units (High Priority)
+Transitive candidates follow Cargo's insert-and-stop rule. When the parent requirement or initial edge filtering is unknown, the output retains uncertain candidates and a diagnostic. `required_artifact = all` with `certainty = unknown` on such a candidate means **if that candidate exists, the synthetic requirement is All**; it doesn't establish that the queue contains it. Missing artifact flags can make the candidate map incomplete as well. The registered graph is retained separately, including repeated dependency references; the effective map consolidates keys as Cargo's queue does.
 
-- **The Missing Information**: When a fresh (cached) unit satisfies a dependency for a downstream crate, the unblocking transition and timestamp are lost.
-- **Existing Event That Almost Provides It**: `UnitFinished { index, elapsed, unblocked }` and `UnitRmetaFinished { index, elapsed, unblocked }`.
-- **Why Existing Telemetry Is Insufficient**: In `src/compiler/timings/mod.rs:159`, `timings.unit_finished` checks `self.active.get(&id)`. Because fresh units do not run as external commands, they are omitted from `self.active`, so `unblocked` is discarded silently.
-- **Concrete Example**: In Scenario 3 (modifying only `leaf_tool`), `leaf_tool` depends on `string_parser` (which is fresh). `leaf_tool` starts at `0.051s`, but no log event explains why it started at `0.051s` rather than `0.000s`.
-- **Smallest Useful Addition**:
-  In `src/compiler/job_queue/mod.rs:1200` (`JobQueue::finish`), when `unblocked` is non-empty for a fresh unit, emit a lightweight event:
-  ```rust
-  LogMessage::UnitUnblocked {
-      index: UnitIndex,
-      unblocked_by: UnitIndex,
-      phase: Artifact,
-      elapsed: f64,
-  }
-  ```
-  Alternatively, allow `timings.unit_finished` to emit `UnitFinished { index, elapsed, unblocked }` with `elapsed` even when `self.active` does not contain the unit.
-- **Compatibility & Overhead**: Existing consumers (such as `cargo report timings`) already filter on `started: true` before rendering Gantt charts, so emitting unblocking events for fresh units will not create phantom zero-duration rows in HTML reports. The runtime cost is negligible (an existing in-memory `unblocked` vector is written to the log thread channel).
+For each observed unblock, the report checks the downstream unit's own predecessor: registered direct first, confidently inferred synthetic second, unknown otherwise. Uncertainty about an artifact requirement doesn't erase a directly registered relationship. Classification never uses the following segment to label the preceding edge.
 
----
+### Chain scope and incomplete data
 
-### Proposal 2: Record Queue/Token Wait Time in `UnitStarted` (Medium Priority)
+Automatic target selection prefers the latest completed requested target. Without one, incomplete requested work is retained; otherwise the fallback is the latest finished or latest started unit. Explicit selection preserves an unstarted or fresh target instead of silently switching targets. The result reports the selection mode, unfinished requested work, and units finishing after the selected target.
 
-- **The Missing Information**: The duration a ready unit spent waiting in `pending_queue` for an available jobserver token.
-- **Existing Event That Almost Provides It**: `UnitStarted { index, elapsed }`.
-- **Why Existing Telemetry Is Insufficient**: `elapsed` records only when the worker process was spawned. It does not record when the unit became ready to run.
-- **Concrete Example**: In Scenario 5a (`-j 1`), units spend hundreds of milliseconds ready in queue before starting. Without token telemetry, an analyzer cannot prove whether this was caused by job starvation or process execution latency.
-- **Smallest Useful Addition**:
-  When a unit is dequeued into `pending_queue` in `JobQueue::spawn_work_if_possible`, record `ready_instant = Instant::now()`. When `run()` is called, compute `queue_wait = ready_instant.elapsed().as_secs_f64()` and include it in `UnitStarted`:
-  ```rust
-  UnitStarted {
-      index: UnitIndex,
-      elapsed: f64,
-      queue_wait: Option<f64>,
-  }
-  ```
-- **Compatibility & Overhead**: Adding an optional field is completely backward-compatible with serde-based consumers. Overhead is one `Instant::now()` call per compilation unit.
+A `complete` chain means its observed segments and measured gaps have consistent required timestamps. It does not establish complete Cargo execution or an observable readiness prefix. A fresh-only prefix is described as readiness unknown. A missing non-fresh predecessor or missing required phase completion makes the chain incomplete. Contradictory input makes it inconsistent. Totals are null for incomplete/inconsistent chains; known segment timestamps remain available. No-op sessions and explicitly fresh targets have no timed chain.
 
----
+The parser rejects mixed run IDs and excludes foreign events in recovery mode. Duplicate/conflicting registrations, repeated completions/unblocks, invalid references/indices, non-finite numbers, graph cycles, and reversed timelines remain visible in final diagnostics. It never clamps them into plausible durations. Recoverable records arriving before registration retain their timing data when registration arrives later. Unknown future event types do not invalidate an otherwise valid input.
 
-### Proposal 3: Expose Effective Scheduling Dependencies in `UnitRegistered` (Low Priority)
+Forced rebuilds, generic dirty terminals, unknown reason variants, and broken pointers don't get a definite root index. A multi-unit explicit chain ending in an ambiguous terminal stays ambiguous. Detailed file metadata remains in JSON; text avoids printing the same source path twice.
 
-- **The Missing Information**: The distinction between registered direct dependencies and synthesized linking dependencies for non-rlib targets.
-- **Existing Event That Almost Provides It**: `UnitRegistered { dependencies: Vec<UnitIndex> }`.
-- **Why Existing Telemetry Is Insufficient**: `dependencies` only reflects the package manifest graph. Tools analyzing scheduling order must reimplement Cargo's private `depend_on_deps_of_deps` logic to understand why an unexpected unit appeared in `unblocked`.
-- **Smallest Useful Addition**:
-  Document the synthetic dependency rule in the `-Zbuild-analysis` RFC/documentation, or optionally include `synthetic_dependencies: Vec<UnitIndex>` in `UnitRegistered`.
-- **Compatibility & Overhead**: Negligible (computed once during unit graph construction).
+## Unknown
+
+Confirmed telemetry limits are the fresh readiness transitions, the lost target/mode/artifact fields, and the lack of timestamps separating scheduler/token transitions. Fingerprint records also lack check durations. Knowing those fields are absent doesn't establish how expensive the corresponding work is.
+
+I couldn't establish token starvation, OS spawn cost, a complete resource-constrained critical path, whole-invocation completion time, or a quantitative pipelining benefit from these sessions. A chain can be measured accurately while omitting competing work that delayed it.
+
+Other questions need a larger investigation: how much freshness processing matters in a large workspace; which missing scheduling fields external consumers really need; and which consumers depend on existing finish-event semantics. This six-crate experiment doesn't answer those.
+
+## Potential upstream improvements
+
+Ranked by the demonstrated problem, not by the amount of instrumentation we could add:
+
+1. **Fresh readiness transitions: worth a focused discussion first.** The leaf/shared-edit sessions have executions with fresh prerequisites and no recorded readiness time. Existing registrations and fresh fingerprints identify dependencies but can't recover the missing instant. Documentation can explain the hole, not fill it. The smallest candidate is a dedicated readiness event only when fresh completion actually makes downstream work ready, carrying elapsed time, affected unit(s), and the satisfying artifact phase if it identifies the upstream completion. A dependency-ready event describes queue state; it should not pretend that a compiler process ran. A dedicated event keeps compilation-finish semantics intact, but is not automatically backward-compatible. An updated Cargo renderer could ignore it without adding compilation rows; older readers need explicit testing (see below). Consumers needing readiness would opt in. The cost would be an extra timestamp and serialized records for those transitions, with log volume proportional to emitted transitions. Neither overhead nor compatibility with all consumers has been measured. An upstream test should cache dependencies, edit a leaf, and verify one readiness transition without introducing a phantom compilation row; cover Metadata and All where applicable.
+
+2. **Document registered versus scheduling edges before extending that schema.** A synthetic final unblock is demonstrated, and exact inference is blocked by missing crate types, check-test information, and artifact flags. Current `unblocked` events are already sufficient to follow the observed chain; the complete scheduler graph isn't required for that use case. Documentation of the unit graph, filter, and synthetic rule has no per-build logging cost or consumer schema impact and may be enough. If a consumer demonstrates a need for the full queue graph, logging actual `(dependency, artifact)` prerequisites at enqueue would avoid reimplementing private rules; log size would grow with that graph, especially synthesized edges, and must be measured. Adding only crate types wouldn't fix all the omissions. Test direct/overlapping/synthetic edges, filtered bin/test dependencies, artifact dependencies, and check/test modes upstream before specifying fields.
+
+3. **Queue and jobserver timestamps: useful hypothesis, insufficient attribution evidence here.** The saved `-j 1` gaps are real; their causes aren't established. Existing starts, unblock times, and static job count cannot split dependency-ready time, pending-queue insertion, token request, token acquisition, dispatch, and Run-message handling. A single `queue_wait` number would still conflate several causes. Documentation should first state what `unit-started` measures. If maintainers need a particular distinction, add timestamps at those actual transitions, not an assumed per-unit token wait when tokens are requested/held through a shared helper. Costs include clock reads, records, and possibly correlating shared token state; they are unmeasured. Existing consumers could ignore additive events, but matching/correlation needs design. Upstream tests would need deterministic queue/token control and root-ready cases, not elapsed-time thresholds on tiny builds.
+
+4. **Fingerprint-check timing: defer.** The schema doesn't time freshness checks, so cached-work attribution can't be reconstructed. These logs demonstrate absence of that measurement, not a performance problem. First measure a representative large no-change workspace or use existing profiling/tracing to establish that this cost matters. Only then consider aggregate phase timing or per-unit spans with a precisely defined scope; recursive/memoized fingerprint calculation could otherwise be double-counted. Per-unit spans add clock/log costs on the no-op path, while aggregate timing loses attribution. Consumer handling and tests would depend on the chosen scope. There is no evidence here to justify a fingerprint-timing PR yet.
+
+A focused issue/comment about the first limitation is supported by a reproduction and source explanation. A Cargo patch still needs maintainer agreement on event meaning and compatibility. The repository is ready to share as an experiment with these limits, not as proof that all four additions are needed.
+
+## Validation and test notes
+
+Run `python3 -m unittest discover -s tests`. The tests deliberately separate source contracts from fabricated timing expectations:
+
+| Tests | Independent basis and event sequence | Expected result |
+| --- | --- | --- |
+| Workspace final-unblocker regression | `enqueue` synthesizes All prerequisites; `finish` returns only final-ready transitions. Six real workspace relationships, with orchestrator or string_parser completing last. | Correct predecessor edge classified direct or inferred synthetic on the target segment. |
+| Crate-type schema fixture | `tests/fixtures/library_registrations.jsonl` was captured with Cargo 1.99.0 from a temporary four-member workspace: `base`, and libraries with `[lib] crate-type = ["rlib"]`, `["cdylib"]`, `["staticlib"]`, each depending on base. Capture command: `cargo build -Zbuild-analysis` with logging enabled and bootstrap for the installed toolchain. Only registration records were retained; temporary workspace paths became `/workspace`, and envelope timestamps/run IDs were removed. | All three kinds are `lib`; the analyzer reports unknown requirements. No invented crate-type field enters the fixture. |
+| Mode/overlap/filter tests | `only_requires_rmeta`, `is_any_test`, and `enqueue`; Build/Check/Test/Doctest registrations, overlapping direct/transitive prerequisites, bin/test filter exceptions. | All versus uncertain artifacts, unique effective keys, preserved direct relationships, and filtering diagnostics. |
+| Metadata and converging branches | Explicit phase-ready transitions followed by starts before full upstream finish; competing branches finish in different orders. | Only the recorded final unblocker is followed; metadata contribution stops at rmeta. A time gap alone proves no jobserver cause. |
+| Incomplete/invalid input | Remove a required finish, combine run IDs, repeat records, invert raw timestamps, omit registrations, or create cycles. | Preserve known partial values, exclude foreign records, null unreliable totals, and reject invalid reconstruction in strict mode. Recovery and unknown future events are checked separately. |
+| Fingerprint chains | Flattened DirtyReason/FsStatus/StaleItem schema and comparison code; explicit chains terminating in local, generic, forced, fresh, missing, or cyclic references. | Specific roots only where justified, terminal ambiguity retained, broken pointers reported, file details preserved. |
+| JSON and harness boundaries | Serialize complete/partial/recovered data; compare saved same-session HTML; remove expected artifacts; simulate command failure or reuse a nonempty output directory. | Exact JSON round trips, no non-finite output, no zero-unit agreement percentage, and failures instead of stale success. |
+
+The real harness checks exact status/execution counts, an acceptable chain status, timing-row indices and values, session-specific output existence, and original workspace hashes. Mutations occur only in the temporary copy. The fixed `-j 1` minimum-delay assertion was removed. Original source files and Cargo's upstream checkout were not changed by validation.
+
+Manual checks cover text output, stdin, explicit target selection, JSON CLI output, the README analysis/validation commands, and the older-consumer experiment above. Temporary Cargo builds additionally exercised `cargo check` and `cargo test --no-run` with rlib/cdylib/staticlib manifests; these verify actual logged kinds/modes, not broad support for every build-script/artifact-dependency configuration. The rolling `cargo +nightly` command was not run: no rolling nightly is installed here. Live builds used installed Cargo 1.99.0 with bootstrap. No Windows/macOS run, controlled performance benchmark, or exhaustive Cargo configuration matrix was performed.

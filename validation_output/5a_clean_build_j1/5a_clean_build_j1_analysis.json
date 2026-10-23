@@ -1,4 +1,5 @@
 {
+  "input_valid": true,
   "session": {
     "run_id": "20261022T215859531Z-af4d9b3605a5442b",
     "command": [
@@ -36,31 +37,35 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         4
       ],
-      "dependents": [],
       "effective_dependencies": [
         {
           "dep_index": 4,
           "required_artifact": "all",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "known"
         },
         {
           "dep_index": 3,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         },
         {
           "dep_index": 1,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         },
         {
           "dep_index": 5,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         }
       ],
       "status": "new",
@@ -97,12 +102,9 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [],
-      "dependents": [
-        3,
-        5
-      ],
       "effective_dependencies": [],
       "status": "new",
       "cause_raw": null,
@@ -137,21 +139,23 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         5
       ],
-      "dependents": [],
       "effective_dependencies": [
         {
           "dep_index": 5,
           "required_artifact": "all",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "known"
         },
         {
           "dep_index": 1,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         }
       ],
       "status": "new",
@@ -188,18 +192,17 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         1
-      ],
-      "dependents": [
-        4
       ],
       "effective_dependencies": [
         {
           "dep_index": 1,
           "required_artifact": "metadata",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "inferred"
         }
       ],
       "status": "new",
@@ -238,24 +241,24 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         3,
         5
       ],
-      "dependents": [
-        0
-      ],
       "effective_dependencies": [
         {
           "dep_index": 3,
           "required_artifact": "metadata",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "inferred"
         },
         {
           "dep_index": 5,
           "required_artifact": "metadata",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "inferred"
         }
       ],
       "status": "new",
@@ -294,19 +297,17 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         1
-      ],
-      "dependents": [
-        2,
-        4
       ],
       "effective_dependencies": [
         {
           "dep_index": 1,
           "required_artifact": "metadata",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "inferred"
         }
       ],
       "status": "new",
@@ -430,14 +431,14 @@
         "effective_end_elapsed": 0.10293777,
         "full_finish_elapsed": 0.16262536,
         "execution_duration": 0.037133789,
-        "ready_to_start_delay": 0.0014151729999999918,
+        "ready_to_start_delay": null,
         "unblocked_by_index": null,
         "unblocked_by_kind": null,
         "unblock_time": null,
         "is_observed_root": true,
-        "is_registered_dep_of_successor": true,
+        "unblocker_relationship": "none",
         "timestamp_inconsistent": false,
-        "note": "DAG root (no registered dependencies)"
+        "note": "No registered dependencies; readiness start is not logged"
       },
       {
         "step": 2,
@@ -454,7 +455,7 @@
         "unblocked_by_kind": "rmeta",
         "unblock_time": 0.10293777,
         "is_observed_root": false,
-        "is_registered_dep_of_successor": true,
+        "unblocker_relationship": "direct",
         "timestamp_inconsistent": false,
         "note": ""
       },
@@ -473,23 +474,30 @@
         "unblocked_by_kind": "finish",
         "unblock_time": 0.281869836,
         "is_observed_root": false,
-        "is_registered_dep_of_successor": false,
+        "unblocker_relationship": "direct",
         "timestamp_inconsistent": false,
         "note": ""
       }
     ],
-    "total_chain_duration": 0.49257346999999996,
+    "status": "complete",
+    "total_chain_duration": 0.49115829699999997,
     "total_execution_duration": 0.23068720999999995,
-    "total_ready_to_start_delays": 0.26188626000000004,
-    "initial_delay": 0.0014151729999999918,
+    "total_ready_to_start_delays": 0.26047108700000005,
+    "initial_interval": 0.0014151729999999918,
     "diagnostics": [],
-    "unreconstructed_notes": []
+    "unreconstructed_notes": [
+      "Automatic selection uses the latest completed requested target; other requested work is not represented."
+    ]
   },
   "diagnostics": {
     "malformed_lines": [],
     "parse_warnings": [],
+    "validation_errors": [],
+    "inference_diagnostics": [],
     "unrecognized_events": [],
     "chain_diagnostics": [],
-    "unreconstructed_notes": []
+    "unreconstructed_notes": [
+      "Automatic selection uses the latest completed requested target; other requested work is not represented."
+    ]
   }
 }

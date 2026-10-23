@@ -7,9 +7,9 @@
   "fresh_units": 0,
   "new_units": 6,
   "chain_steps": 3,
-  "chain_duration": 0.49257346999999996,
+  "chain_duration": 0.49115829699999997,
   "execution_duration": 0.23068720999999995,
-  "ready_to_start_delays": 0.26188626000000004,
+  "ready_to_start_delays": 0.26047108700000005,
   "timing_agreement_units_compared": 6,
   "timing_agreement_pct": 100.0,
   "agreement_records": [
@@ -79,5 +79,7 @@
       "duration_diff": 0.0,
       "agrees": true
     }
-  ]
+  ],
+  "chain_status": "complete",
+  "initial_interval": 0.0014151729999999918
 }

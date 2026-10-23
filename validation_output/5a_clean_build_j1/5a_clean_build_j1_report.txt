@@ -1,5 +1,5 @@
 ================================================================================
-CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
+CARGO BUILD TRACE: OBSERVED UNBLOCKING CHAIN AND REBUILD CAUSES
 ================================================================================
 
 ## 1. SESSION INFORMATION
@@ -37,27 +37,27 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
   Distinguishing Registered, Effective Scheduling, and Rebuild-Causality Edges:
   * Unit 0 [cli_app v0.1.0 (cli_app:bin)]:
       Registered Direct Dependencies:   unit 4 (orchestrator)
-      Effective Scheduling Prerequisites: unit 4 (orchestrator, all), unit 3 (math_engine, all, synthetic), unit 1 (core_util, all, synthetic), unit 5 (string_parser, all, synthetic)
+      Inferred Scheduling Prerequisites: unit 4 (orchestrator, all, known), unit 3 (math_engine, all, inferred, synthetic), unit 1 (core_util, all, inferred, synthetic), unit 5 (string_parser, all, inferred, synthetic)
       Recorded Dynamic Unblocker:        unit 4 (orchestrator, finish @ 0.410s)
   * Unit 1 [core_util v0.1.0]:
       Registered Direct Dependencies:   none
-      Effective Scheduling Prerequisites: none
+      Inferred Scheduling Prerequisites: none
       Recorded Dynamic Unblocker:        none (DAG root)
   * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)]:
       Registered Direct Dependencies:   unit 5 (string_parser)
-      Effective Scheduling Prerequisites: unit 5 (string_parser, all), unit 1 (core_util, all, synthetic)
+      Inferred Scheduling Prerequisites: unit 5 (string_parser, all, known), unit 1 (core_util, all, inferred, synthetic)
       Recorded Dynamic Unblocker:        unit 5 (string_parser, finish @ 0.282s)
   * Unit 3 [math_engine v0.1.0]:
       Registered Direct Dependencies:   unit 1 (core_util)
-      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Inferred Scheduling Prerequisites: unit 1 (core_util, metadata, inferred)
       Recorded Dynamic Unblocker:        unit 1 (core_util, rmeta @ 0.103s)
   * Unit 4 [orchestrator v0.1.0]:
       Registered Direct Dependencies:   unit 3 (math_engine), unit 5 (string_parser)
-      Effective Scheduling Prerequisites: unit 3 (math_engine, metadata), unit 5 (string_parser, metadata)
+      Inferred Scheduling Prerequisites: unit 3 (math_engine, metadata, inferred), unit 5 (string_parser, metadata, inferred)
       Recorded Dynamic Unblocker:        unit 3 (math_engine, rmeta @ 0.318s)
   * Unit 5 [string_parser v0.1.0]:
       Registered Direct Dependencies:   unit 1 (core_util)
-      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Inferred Scheduling Prerequisites: unit 1 (core_util, metadata, inferred)
       Recorded Dynamic Unblocker:        unit 1 (core_util, rmeta @ 0.103s)
 
 ## 4. REBUILD REASON ATTRIBUTION CHAINS
@@ -81,28 +81,33 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
       Root Invalidation Cause: fresh build (no previous artifact)
 
 ## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN
+  Chain status: complete
+  Target index: 2, selection: requested_target
   Target Unit: leaf_tool v0.1.0 (leaf_tool:bin) (index 2, selection: requested_target)
 
   Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Ready Delay  Unblocked By
   --------------------------------------------------------------------------------------------------------------
-  1    core_util v0.1.0             rmeta    0.066      0.103      0.037     s 0.001      s DAG root / initial
-        Note: DAG root (no registered dependencies)
-  2    string_parser v0.1.0         finish   0.163      0.282      0.119     s 0.060      s unit 1 (rmeta @ 0.103s) (direct)
-  3    leaf_tool v0.1.0 (leaf_too   finish   0.483      0.557      0.074     s 0.201      s unit 5 (finish @ 0.282s) (synthetic/indirect)
+  1    core_util v0.1.0             rmeta    0.066      0.1029s    0.0371s     unknown      none observed; readiness unknown
+        Note: No registered dependencies; readiness start is not logged
+  2    string_parser v0.1.0         finish   0.163      0.2819s    0.1191s     0.0598s      unit 1 (rmeta @ 0.103s) (direct)
+  3    leaf_tool v0.1.0 (leaf_too   finish   0.483      0.5570s    0.0744s     0.2007s      unit 5 (finish @ 0.282s) (direct)
 
 ## 6. TIMING AND CHAIN BUDGET
-  Total Observed Chain Duration:       0.4926s
-  - Active Unit Execution on Chain:    0.2307s (46.8%)
-  - Cumulative Ready-to-Start Delays:  0.2619s (53.2%)
-    (Initial Queue Startup Delay:      0.0014s)
+  Observed Chain Span:                0.4912s
+  - Active Unit Execution on Chain:   0.2307s
+  - Measured Ready-to-Start Gaps:      0.2605s (2 observed)
+  Initial Graph-to-Start Interval:    0.0014s (readiness unknown)
+  Chain span begins at its first observed start, excluding the initial interval.
+  Unavailable totals are unknown; known segment timestamps remain above.
 
   Note on Ready-to-Start Delays:
     Delays between unblocking and execution start conflate jobserver token contention (-j),
     job queue priority ordering, and OS process fork/exec overhead. Cargo does not log
     token acquire/release events, so this interval cannot be definitively split into
-    dependency waiting vs worker saturation without additional instrumentation.
+    token waiting, dispatch, and event-loop overhead without additional instrumentation.
 
 ## 7. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
+  * Automatic selection uses the latest completed requested target; other requested work is not represented.
   * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler delays cannot be definitively assigned to job token starvation vs OS delay.
 
 ================================================================================

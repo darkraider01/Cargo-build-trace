@@ -1,4 +1,5 @@
 {
+  "input_valid": true,
   "session": {
     "run_id": "20261022T215859098Z-af4d9b3605a5442b",
     "command": [
@@ -34,31 +35,35 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         4
       ],
-      "dependents": [],
       "effective_dependencies": [
         {
           "dep_index": 4,
           "required_artifact": "all",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "known"
         },
         {
           "dep_index": 3,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         },
         {
           "dep_index": 1,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         },
         {
           "dep_index": 5,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         }
       ],
       "status": "fresh",
@@ -91,12 +96,9 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [],
-      "dependents": [
-        3,
-        5
-      ],
       "effective_dependencies": [],
       "status": "fresh",
       "cause_raw": null,
@@ -128,21 +130,23 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         5
       ],
-      "dependents": [],
       "effective_dependencies": [
         {
           "dep_index": 5,
           "required_artifact": "all",
-          "is_synthetic": false
+          "is_synthetic": false,
+          "certainty": "known"
         },
         {
           "dep_index": 1,
           "required_artifact": "all",
-          "is_synthetic": true
+          "is_synthetic": true,
+          "certainty": "inferred"
         }
       ],
       "status": "fresh",
@@ -175,18 +179,17 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         1
       ],
-      "dependents": [
-        4
-      ],
       "effective_dependencies": [
         {
           "dep_index": 1,
-          "required_artifact": "metadata",
-          "is_synthetic": false
+          "required_artifact": "unknown",
+          "is_synthetic": false,
+          "certainty": "unknown"
         }
       ],
       "status": "fresh",
@@ -219,24 +222,30 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         3,
         5
       ],
-      "dependents": [
-        0
-      ],
       "effective_dependencies": [
         {
           "dep_index": 3,
-          "required_artifact": "metadata",
-          "is_synthetic": false
+          "required_artifact": "unknown",
+          "is_synthetic": false,
+          "certainty": "unknown"
         },
         {
           "dep_index": 5,
-          "required_artifact": "metadata",
-          "is_synthetic": false
+          "required_artifact": "unknown",
+          "is_synthetic": false,
+          "certainty": "unknown"
+        },
+        {
+          "dep_index": 1,
+          "required_artifact": "all",
+          "is_synthetic": true,
+          "certainty": "unknown"
         }
       ],
       "status": "fresh",
@@ -269,19 +278,17 @@
       "mode": "build",
       "platform": "x86_64-unknown-linux-gnu",
       "requested": true,
+      "registered": true,
       "features": [],
       "dependencies": [
         1
       ],
-      "dependents": [
-        2,
-        4
-      ],
       "effective_dependencies": [
         {
           "dep_index": 1,
-          "required_artifact": "metadata",
-          "is_synthetic": false
+          "required_artifact": "unknown",
+          "is_synthetic": false,
+          "certainty": "unknown"
         }
       ],
       "status": "fresh",
@@ -310,26 +317,33 @@
     "target_unit_index": -1,
     "target_selection_mode": "none",
     "segments": [],
-    "total_chain_duration": 0.0,
-    "total_execution_duration": 0.0,
-    "total_ready_to_start_delays": 0.0,
-    "initial_delay": 0.0,
+    "status": "no_execution",
+    "total_chain_duration": null,
+    "total_execution_duration": null,
+    "total_ready_to_start_delays": null,
+    "initial_interval": null,
     "diagnostics": [
-      "No units recorded start events in this log session."
+      "No units recorded start events in this log session; Cargo wall-clock time is not zero."
     ],
     "unreconstructed_notes": [
-      "Session contains no executed units."
+      "Automatic selection uses the latest completed requested target; other requested work is not represented."
     ]
   },
   "diagnostics": {
     "malformed_lines": [],
     "parse_warnings": [],
+    "validation_errors": [],
+    "inference_diagnostics": [
+      "Unit 3: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph.",
+      "Unit 4: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph.",
+      "Unit 5: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph."
+    ],
     "unrecognized_events": [],
     "chain_diagnostics": [
-      "No units recorded start events in this log session."
+      "No units recorded start events in this log session; Cargo wall-clock time is not zero."
     ],
     "unreconstructed_notes": [
-      "Session contains no executed units."
+      "Automatic selection uses the latest completed requested target; other requested work is not represented."
     ]
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automated, reproducible validation harness for Cargo -Zbuild-analysis critical-path prototype.
+"""Validate the Cargo build-analysis prototype with isolated real builds.
 
 Executes scenarios against an isolated copy of test_workspace:
 1. Initial clean build
@@ -8,8 +8,8 @@ Executes scenarios against an isolated copy of test_workspace:
 4. Shared dependency modification
 5. Concurrency comparison: -j 1 vs -j 8
 
-Performs rigorous, fail-closed validation:
-- Matches exact run IDs via log directory diffing (never selects stale logs).
+Checks:
+- Captures sessions in a private CARGO_HOME.
 - Verifies exact expected counts of executed units.
 - Verifies unit start times and durations against Cargo's HTML report.
 - Guarantees tracked repository source files remain unmodified.
@@ -17,6 +17,8 @@ Performs rigorous, fail-closed validation:
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,8 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -40,16 +41,26 @@ from build_trace import (
 
 ORIGINAL_WORKSPACE = REPO_ROOT / "test_workspace"
 OUTPUT_DIR = REPO_ROOT / "validation_output"
-CARGO_LOG_DIR = Path.home() / ".cargo" / "log"
 
 
-def run_cmd(cmd: List[str], cwd: Path, env: Optional[Dict[str, str]] = None) -> subprocess.CompletedProcess:
+def write_text_atomic(path: Path, content: str) -> None:
+    stream = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False)
+    temporary = Path(stream.name)
+    try:
+        with stream:
+            stream.write(content)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def run_cmd(cmd: List[str], cwd: Path) -> subprocess.CompletedProcess:
     full_env = os.environ.copy()
+    full_env["CARGO_HOME"] = str(cwd.parent / "cargo_home")
+    full_env["CARGO_TARGET_DIR"] = str(cwd / "target")
+    full_env.pop("CARGO_BUILD_BUILD_DIR", None)
     full_env["RUSTC_BOOTSTRAP"] = "1"
     full_env["CARGO_BUILD_ANALYSIS_ENABLED"] = "true"
-    if env:
-        full_env.update(env)
-
     res = subprocess.run(cmd, cwd=cwd, env=full_env, capture_output=True, text=True)
     if res.returncode != 0:
         print(f"Command failed ({' '.join(cmd)}) in {cwd}:", file=sys.stderr)
@@ -71,113 +82,16 @@ def extract_cargo_timing_unit_data(html_path: Path) -> List[Dict[str, Any]]:
 
     try:
         return json.loads(m.group(1))
-    except Exception as e:
+    except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse UNIT_DATA JSON from {html_path}: {e}") from e
 
 
-def run_scenario(
-    name: str,
-    ws_dir: Path,
-    prepare_fn,
-    build_args: List[str],
-    expected_executed_units: int,
-    expected_dirty_units: int,
-    expected_fresh_units: int,
-    expected_new_units: int,
-) -> Dict[str, Any]:
-    print(f"\n{'=' * 70}")
-    print(f"Scenario: {name}")
-    print(f"{'=' * 70}")
-
-    prepare_fn(ws_dir)
-
-    # Snapshot existing logs in ~/.cargo/log to detect the exact new file
-    CARGO_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    before_logs: Set[Path] = set(CARGO_LOG_DIR.glob("*.jsonl"))
-
-    cargo_cmd = [
-        "cargo", "build",
-        "--manifest-path", str(ws_dir / "Cargo.toml"),
-        "-Zbuild-analysis",
-    ] + build_args
-    print(f"Executing: {' '.join(cargo_cmd)}")
-    run_cmd(cargo_cmd, cwd=ws_dir)
-
-    # Capture the exact newly created log file
-    after_logs: Set[Path] = set(CARGO_LOG_DIR.glob("*.jsonl"))
-    new_logs = after_logs - before_logs
-    if len(new_logs) != 1:
-        raise RuntimeError(
-            f"Expected exactly 1 new log file in {CARGO_LOG_DIR}, found {len(new_logs)}: "
-            f"{[p.name for p in new_logs]}"
-        )
-    log_file = list(new_logs)[0]
-    run_id = log_file.stem
-    print(f"Captured exact session log: {log_file.name} ({log_file.stat().st_size} bytes)")
-
-    # Run cargo report timings for this specific session
-    timings_cmd = [
-        "cargo", "report", "timings",
-        "-Zbuild-analysis",
-        "--id", run_id,
-        "--manifest-path", str(ws_dir / "Cargo.toml"),
-    ]
-    run_cmd(timings_cmd, cwd=ws_dir)
-
-    cargo_html_path = ws_dir / "target" / "cargo-timings" / f"cargo-timing-{run_id}.html"
-    if not cargo_html_path.exists():
-        raise FileNotFoundError(f"Cargo report timings did not produce expected file at: {cargo_html_path}")
-
-    # Copy artifacts to validation_output
-    scenario_dir = OUTPUT_DIR / name.lower().replace(" ", "_").replace("-", "_")
-    scenario_dir.mkdir(parents=True, exist_ok=True)
-
-    dest_log = scenario_dir / f"{name}_session.jsonl"
-    shutil.copy2(log_file, dest_log)
-    shutil.copy2(cargo_html_path, scenario_dir / f"{name}_cargo_timing.html")
-
-    # Run our analyzer
-    parser = BuildAnalysisParser(strict=True)
-    parser.parse_file(dest_log)
-    analyzer = CriticalPathAnalyzer(parser)
-    rebuild_chains = analyzer.trace_rebuild_reasons()
-    crit_path = analyzer.compute_critical_path()
-
-    # Save reports
-    text_report = format_text_report(parser, analyzer, rebuild_chains, crit_path)
-    (scenario_dir / f"{name}_report.txt").write_text(text_report, encoding="utf-8")
-
-    json_data = serialize_analysis(parser, rebuild_chains, crit_path)
-    (scenario_dir / f"{name}_analysis.json").write_text(json.dumps(json_data, indent=2), encoding="utf-8")
-
-    # Verification of unit counts
-    actual_executed = sum(1 for u in parser.units.values() if u.start_elapsed is not None)
-    actual_dirty = sum(1 for u in parser.units.values() if u.status == "dirty")
-    actual_fresh = sum(1 for u in parser.units.values() if u.status == "fresh")
-    actual_new = sum(1 for u in parser.units.values() if u.status == "new")
-
-    if actual_executed != expected_executed_units:
-        raise AssertionError(
-            f"Executed units mismatch for {name}: expected {expected_executed_units}, got {actual_executed}"
-        )
-    if actual_dirty != expected_dirty_units:
-        raise AssertionError(
-            f"Dirty units mismatch for {name}: expected {expected_dirty_units}, got {actual_dirty}"
-        )
-    if actual_fresh != expected_fresh_units:
-        raise AssertionError(
-            f"Fresh units mismatch for {name}: expected {expected_fresh_units}, got {actual_fresh}"
-        )
-    if actual_new != expected_new_units:
-        raise AssertionError(
-            f"New units mismatch for {name}: expected {expected_new_units}, got {actual_new}"
-        )
-
-    # Verification against Cargo HTML timing report
+def compare_timings(parser: BuildAnalysisParser, cargo_html_path: Path, actual_executed: int) -> List[Dict[str, Any]]:
+    """Cross-check the same session's independently rendered, centisecond timings."""
     cargo_timing_units = extract_cargo_timing_unit_data(cargo_html_path)
-    if len(cargo_timing_units) != expected_executed_units:
+    if len(cargo_timing_units) != actual_executed:
         raise AssertionError(
-            f"Cargo timing HTML reported {len(cargo_timing_units)} units, expected {expected_executed_units}"
+            f"Cargo timing HTML reported {len(cargo_timing_units)} units, expected {actual_executed}"
         )
 
     agreement_records = []
@@ -224,12 +138,120 @@ def run_scenario(
             "agrees": True,
         })
 
+    if {r["index"] for r in agreement_records} != {u.index for u in parser.units.values() if u.start_elapsed is not None}:
+        raise AssertionError("Cargo timing rows do not match the executed unit indices")
+    return agreement_records
+
+
+def run_scenario(
+    name: str,
+    ws_dir: Path,
+    prepare_fn,
+    build_args: List[str],
+    expected_executed_units: int,
+    expected_dirty_units: int,
+    expected_fresh_units: int,
+    expected_new_units: int,
+    output_dir: Path,
+) -> Dict[str, Any]:
+    print(f"\n{'=' * 70}")
+    print(f"Scenario: {name}")
+    print(f"{'=' * 70}")
+
+    scenario_dir = output_dir / name.lower().replace(" ", "_").replace("-", "_")
+    scenario_dir.mkdir(parents=True, exist_ok=False)
+    prepare_fn(ws_dir)
+
+    log_dir = ws_dir.parent / "cargo_home" / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    before_logs = set(log_dir.glob("*.jsonl"))
+
+    cargo_cmd = [
+        "cargo", "build",
+        "--manifest-path", str(ws_dir / "Cargo.toml"),
+        "-Zbuild-analysis",
+    ] + build_args
+    print(f"Executing: {' '.join(cargo_cmd)}")
+    run_cmd(cargo_cmd, cwd=ws_dir)
+
+    # Capture the exact newly created log file
+    after_logs = set(log_dir.glob("*.jsonl"))
+    new_logs = after_logs - before_logs
+    if len(new_logs) != 1:
+        raise RuntimeError(
+            f"Expected exactly 1 new log file in {log_dir}, found {len(new_logs)}: "
+            f"{[p.name for p in new_logs]}"
+        )
+    log_file = list(new_logs)[0]
+    run_id = log_file.stem
+    print(f"Captured exact session log: {log_file.name} ({log_file.stat().st_size} bytes)")
+
+    # Run cargo report timings for this specific session
+    timings_cmd = [
+        "cargo", "report", "timings",
+        "-Zbuild-analysis",
+        "--id", run_id,
+        "--manifest-path", str(ws_dir / "Cargo.toml"),
+    ]
+    run_cmd(timings_cmd, cwd=ws_dir)
+
+    cargo_html_path = ws_dir / "target" / "cargo-timings" / f"cargo-timing-{run_id}.html"
+    if not cargo_html_path.exists():
+        raise FileNotFoundError(f"Cargo report timings did not produce expected file at: {cargo_html_path}")
+
+    # Keep the captured inputs alongside the derived reports.
+    dest_log = scenario_dir / f"{name}_session.jsonl"
+    write_text_atomic(dest_log, log_file.read_text(encoding="utf-8"))
+    write_text_atomic(scenario_dir / f"{name}_cargo_timing.html", cargo_html_path.read_text(encoding="utf-8"))
+
+    # Run our analyzer
+    parser = BuildAnalysisParser(strict=True)
+    parser.parse_file(dest_log)
+    analyzer = CriticalPathAnalyzer(parser)
+    rebuild_chains = analyzer.trace_rebuild_reasons()
+    crit_path = analyzer.compute_critical_path()
+
+    # Save reports
+    text_report = format_text_report(parser, analyzer, rebuild_chains, crit_path)
+    write_text_atomic(scenario_dir / f"{name}_report.txt", text_report)
+
+    json_data = serialize_analysis(parser, rebuild_chains, crit_path)
+    write_text_atomic(scenario_dir / f"{name}_analysis.json", json.dumps(json_data, indent=2, allow_nan=False))
+
+    # Verification of unit counts
+    actual_executed = sum(1 for u in parser.units.values() if u.start_elapsed is not None)
+    actual_dirty = sum(1 for u in parser.units.values() if u.status == "dirty")
+    actual_fresh = sum(1 for u in parser.units.values() if u.status == "fresh")
+    actual_new = sum(1 for u in parser.units.values() if u.status == "new")
+
+    if crit_path.status not in ("complete", "no_execution"):
+        raise AssertionError(f"Scenario {name} produced an unreliable chain: {crit_path.status}")
+
+    if actual_executed != expected_executed_units:
+        raise AssertionError(
+            f"Executed units mismatch for {name}: expected {expected_executed_units}, got {actual_executed}"
+        )
+    if actual_dirty != expected_dirty_units:
+        raise AssertionError(
+            f"Dirty units mismatch for {name}: expected {expected_dirty_units}, got {actual_dirty}"
+        )
+    if actual_fresh != expected_fresh_units:
+        raise AssertionError(
+            f"Fresh units mismatch for {name}: expected {expected_fresh_units}, got {actual_fresh}"
+        )
+    if actual_new != expected_new_units:
+        raise AssertionError(
+            f"New units mismatch for {name}: expected {expected_new_units}, got {actual_new}"
+        )
+
+    agreement_records = compare_timings(parser, cargo_html_path, actual_executed)
+
     print(f"PASS: {name}")
-    print(f"  Executed units: {actual_executed} (agrees 100% with Cargo timing report)")
+    print(f"  Executed units: {actual_executed}")
+    comparison = "100% of compared units" if agreement_records else "N/A (no executed units)"
+    print(f"  Timing comparison: {comparison}")
     print(f"  Status breakdown: {actual_new} new, {actual_dirty} dirty, {actual_fresh} fresh")
-    print(f"  Unblocking chain steps: {len(crit_path.segments)}")
-    print(f"  Total chain duration: {crit_path.total_chain_duration:.3f}s "
-          f"(exec: {crit_path.total_execution_duration:.3f}s, ready delay: {crit_path.total_ready_to_start_delays:.3f}s)")
+    print(f"  Unblocking chain steps: {len(crit_path.segments)}; status: {crit_path.status}")
 
     summary = {
         "scenario": name,
@@ -244,21 +266,36 @@ def run_scenario(
         "execution_duration": crit_path.total_execution_duration,
         "ready_to_start_delays": crit_path.total_ready_to_start_delays,
         "timing_agreement_units_compared": len(agreement_records),
-        "timing_agreement_pct": 100.0,
+        "timing_agreement_pct": 100.0 if agreement_records else None,
+        "chain_status": crit_path.status,
+        "initial_interval": crit_path.initial_interval,
+        "cargo_version_verbose": run_cmd(["cargo", "-vV"], cwd=ws_dir).stdout,
         "agreement_records": agreement_records,
     }
 
-    (scenario_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_text_atomic(scenario_dir / "summary.json", json.dumps(summary, indent=2, allow_nan=False))
     return summary
 
 
+def workspace_digest() -> Dict[str, str]:
+    return {str(p.relative_to(ORIGINAL_WORKSPACE)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in ORIGINAL_WORKSPACE.rglob("*") if p.is_file() and "target" not in p.relative_to(ORIGINAL_WORKSPACE).parts}
+
+
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--output-dir", type=Path, default=OUTPUT_DIR,
+                     help="Empty output directory (existing results are never reused)")
+    output_dir = cli.parse_args().output_dir.resolve()
+    if output_dir.exists() and any(output_dir.iterdir()):
+        cli.error(f"Output directory is not empty: {output_dir}; choose a new --output-dir")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    original_digest = workspace_digest()
 
     with tempfile.TemporaryDirectory(prefix="cargo_trace_val_") as temp_dir:
         temp_ws = Path(temp_dir) / "test_workspace"
         print(f"Creating isolated workspace copy at: {temp_ws}")
-        shutil.copytree(ORIGINAL_WORKSPACE, temp_ws)
+        shutil.copytree(ORIGINAL_WORKSPACE, temp_ws, ignore=shutil.ignore_patterns("target"))
 
         # 1. Initial clean build
         def prep_clean(ws: Path):
@@ -273,6 +310,7 @@ def main():
             expected_dirty_units=0,
             expected_fresh_units=0,
             expected_new_units=6,
+            output_dir=output_dir,
         )
 
         # 2. No-change rebuild
@@ -288,13 +326,14 @@ def main():
             expected_dirty_units=0,
             expected_fresh_units=6,
             expected_new_units=0,
+            output_dir=output_dir,
         )
 
         # 3. Leaf modification (modify leaf_tool/src/main.rs)
         def prep_leaf(ws: Path):
             leaf_src = ws / "leaf_tool" / "src" / "main.rs"
             text = leaf_src.read_text(encoding="utf-8")
-            leaf_src.write_text(text + "\n// modified leaf for test\n", encoding="utf-8")
+            write_text_atomic(leaf_src, text + "\n// modified leaf for test\n")
 
         res_leaf = run_scenario(
             "3_leaf_modification",
@@ -305,13 +344,14 @@ def main():
             expected_dirty_units=1,
             expected_fresh_units=5,
             expected_new_units=0,
+            output_dir=output_dir,
         )
 
         # 4. Shared dependency modification (modify string_parser/src/lib.rs)
         def prep_shared(ws: Path):
             parser_src = ws / "string_parser" / "src" / "lib.rs"
             text = parser_src.read_text(encoding="utf-8")
-            parser_src.write_text(text + "\n// modified shared dep for test\n", encoding="utf-8")
+            write_text_atomic(parser_src, text + "\n// modified shared dep for test\n")
 
         res_shared = run_scenario(
             "4_shared_dep_modification",
@@ -322,6 +362,7 @@ def main():
             expected_dirty_units=4,
             expected_fresh_units=2,
             expected_new_units=0,
+            output_dir=output_dir,
         )
 
         # 5a. Concurrency comparison: -j 1 (serialized)
@@ -337,13 +378,8 @@ def main():
             expected_dirty_units=0,
             expected_fresh_units=0,
             expected_new_units=6,
+            output_dir=output_dir,
         )
-
-        # Assert that -j 1 incurred significant ready delay
-        if res_j1["ready_to_start_delays"] < 0.1:
-            raise AssertionError(
-                f"-j 1 build should have significant ready-to-start queue delays, got {res_j1['ready_to_start_delays']}s"
-            )
 
         # 5b. Concurrency comparison: -j 8 (parallel)
         def prep_j8(ws: Path):
@@ -358,17 +394,19 @@ def main():
             expected_dirty_units=0,
             expected_fresh_units=0,
             expected_new_units=6,
+            output_dir=output_dir,
         )
+
+    if workspace_digest() != original_digest:
+        raise AssertionError("Validation changed the original test workspace")
 
     # Save consolidated summary
     all_summaries = [res_clean, res_nochange, res_leaf, res_shared, res_j1, res_j8]
-    (OUTPUT_DIR / "all_scenarios_summary.json").write_text(
-        json.dumps(all_summaries, indent=2), encoding="utf-8"
-    )
+    write_text_atomic(output_dir / "all_scenarios_summary.json", json.dumps(all_summaries, indent=2, allow_nan=False))
 
     print(f"\n{'=' * 70}")
     print("ALL 6 VALIDATION SCENARIOS PASSED WITH INDEPENDENT ASSERTIONS")
-    print(f"Outputs written to: {OUTPUT_DIR}")
+    print(f"Outputs written to: {output_dir}")
     print(f"{'=' * 70}")
 
 

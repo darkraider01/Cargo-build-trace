@@ -1,5 +1,5 @@
 ================================================================================
-CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
+CARGO BUILD TRACE: OBSERVED UNBLOCKING CHAIN AND REBUILD CAUSES
 ================================================================================
 
 ## 1. SESSION INFORMATION
@@ -37,73 +37,77 @@ CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT
   Distinguishing Registered, Effective Scheduling, and Rebuild-Causality Edges:
   * Unit 0 [cli_app v0.1.0 (cli_app:bin)]:
       Registered Direct Dependencies:   unit 4 (orchestrator)
-      Effective Scheduling Prerequisites: unit 4 (orchestrator, all), unit 3 (math_engine, all, synthetic), unit 1 (core_util, all, synthetic), unit 5 (string_parser, all, synthetic)
+      Inferred Scheduling Prerequisites: unit 4 (orchestrator, all, known), unit 3 (math_engine, all, inferred, synthetic), unit 1 (core_util, all, inferred, synthetic), unit 5 (string_parser, all, inferred, synthetic)
       Recorded Dynamic Unblocker:        unit 4 (orchestrator, finish @ 0.059s)
   * Unit 1 [core_util v0.1.0]:
       Registered Direct Dependencies:   none
-      Effective Scheduling Prerequisites: none
+      Inferred Scheduling Prerequisites: none
       Recorded Dynamic Unblocker:        none (DAG root)
   * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)]:
       Registered Direct Dependencies:   unit 5 (string_parser)
-      Effective Scheduling Prerequisites: unit 5 (string_parser, all), unit 1 (core_util, all, synthetic)
+      Inferred Scheduling Prerequisites: unit 5 (string_parser, all, known), unit 1 (core_util, all, inferred, synthetic)
       Recorded Dynamic Unblocker:        unit 5 (string_parser, finish @ 0.039s)
   * Unit 3 [math_engine v0.1.0]:
       Registered Direct Dependencies:   unit 1 (core_util)
-      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Inferred Scheduling Prerequisites: unit 1 (core_util, unknown, unknown)
       Recorded Dynamic Unblocker:        none (root or fresh unblocker)
   * Unit 4 [orchestrator v0.1.0]:
       Registered Direct Dependencies:   unit 3 (math_engine), unit 5 (string_parser)
-      Effective Scheduling Prerequisites: unit 3 (math_engine, metadata), unit 5 (string_parser, metadata)
+      Inferred Scheduling Prerequisites: unit 3 (math_engine, unknown, unknown), unit 5 (string_parser, metadata, inferred)
       Recorded Dynamic Unblocker:        unit 5 (string_parser, rmeta @ 0.032s)
   * Unit 5 [string_parser v0.1.0]:
       Registered Direct Dependencies:   unit 1 (core_util)
-      Effective Scheduling Prerequisites: unit 1 (core_util, metadata)
+      Inferred Scheduling Prerequisites: unit 1 (core_util, unknown, unknown)
       Recorded Dynamic Unblocker:        none (root or fresh unblocker)
 
 ## 4. REBUILD REASON ATTRIBUTION CHAINS
   * Unit 0 [cli_app v0.1.0 (cli_app:bin)] status=dirty [CONFIRMED_EXPLICIT]:
       Causal Chain: unit 0 (cli_app) -> unit 4 (orchestrator) -> unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
-      Invalidating File Path:  /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
+      Root Invalidation Cause: changed-file: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
   * Unit 2 [leaf_tool v0.1.0 (leaf_tool:bin)] status=dirty [CONFIRMED_EXPLICIT]:
       Causal Chain: unit 2 (leaf_tool) -> unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
-      Invalidating File Path:  /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
+      Root Invalidation Cause: changed-file: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
   * Unit 4 [orchestrator v0.1.0] status=dirty [CONFIRMED_EXPLICIT]:
       Causal Chain: unit 4 (orchestrator) -> unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
-      Invalidating File Path:  /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
+      Root Invalidation Cause: changed-file: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
   * Unit 5 [string_parser v0.1.0] status=dirty [LOCAL_INVALIDATION]:
       Causal Chain: unit 5 (string_parser)
-      Root Invalidation Cause: changed-file modified: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
-      Invalidating File Path:  /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
+      Root Invalidation Cause: changed-file: /tmp/cargo_trace_val_c7c5g6hs/test_workspace/string_parser/src/lib.rs
 
 ## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN
+  Chain status: complete
+  Target index: 0, selection: requested_target
   Target Unit: cli_app v0.1.0 (cli_app:bin) (index 0, selection: requested_target)
 
   Step  Unit Name                    Phase    Start (s)  End (s)    Exec Time   Ready Delay  Unblocked By
   --------------------------------------------------------------------------------------------------------------
-  1    string_parser v0.1.0         rmeta    0.011      0.032      0.021     s 0.001      s DAG root / initial
-        Note: Unblocked by fresh dependencies (Cargo omits unblock events for fresh units)
-  2    orchestrator v0.1.0          finish   0.032      0.059      0.027     s 0.000      s unit 5 (rmeta @ 0.032s) (direct)
-  3    cli_app v0.1.0 (cli_app:bi   finish   0.059      0.138      0.080     s 0.000      s unit 4 (finish @ 0.059s) (synthetic/indirect)
+  1    string_parser v0.1.0         rmeta    0.011      0.0315s    0.0207s     unknown      none observed; readiness unknown
+        Note: Only fresh dependencies; Cargo omits their unblock events, readiness start unknown
+  2    orchestrator v0.1.0          finish   0.032      0.0585s    0.0267s     0.0002s      unit 5 (rmeta @ 0.032s) (direct)
+  3    cli_app v0.1.0 (cli_app:bi   finish   0.059      0.1384s    0.0797s     0.0002s      unit 4 (finish @ 0.059s) (direct)
 
 ## 6. TIMING AND CHAIN BUDGET
-  Total Observed Chain Duration:       0.1284s
-  - Active Unit Execution on Chain:    0.1271s (99.0%)
-  - Cumulative Ready-to-Start Delays:  0.0013s (1.0%)
-    (Initial Queue Startup Delay:      0.0008s)
+  Observed Chain Span:                0.1276s
+  - Active Unit Execution on Chain:   0.1271s
+  - Measured Ready-to-Start Gaps:      0.0005s (2 observed)
+  Initial Graph-to-Start Interval:    0.0008s (readiness unknown)
+  Chain span begins at its first observed start, excluding the initial interval.
+  Unavailable totals are unknown; known segment timestamps remain above.
 
   Note on Ready-to-Start Delays:
     Delays between unblocking and execution start conflate jobserver token contention (-j),
     job queue priority ordering, and OS process fork/exec overhead. Cargo does not log
     token acquire/release events, so this interval cannot be definitively split into
-    dependency waiting vs worker saturation without additional instrumentation.
+    token waiting, dispatch, and event-loop overhead without additional instrumentation.
 
 ## 7. EVENTS & INFORMATION THAT COULD NOT BE RECONSTRUCTED
   * 2 units were fresh (cached). Cargo emits no start, finish, or unblock events for fresh units, making their fingerprint verification time unmeasurable from log events alone.
+  * Automatic selection uses the latest completed requested target; other requested work is not represented.
   * Scheduler queue state (jobserver tokens, running jobs count, OS process fork latency) is not logged by Cargo, meaning scheduler delays cannot be definitively assigned to job token starvation vs OS delay.
-  * Unit string_parser v0.1.0 (index 5) started at 0.011s but has no unblocking event in the log. Upstream dependencies were omitted from unblocking telemetry.
-  * Unit string_parser v0.1.0 (index 5) was unblocked by fresh dependency units ['core_util'], but Cargo's event stream omits unblock events for fresh units.
+  * Unit 3: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph.
+  * Unit 4: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph.
+  * Unit 5: fresh dependencies have no observed readiness transition.
+  * Unit 5: scheduling inference uncertain; UnitRegistered omits crate types, check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph.
+  * Unit string_parser v0.1.0 (index 5) started at 0.011s but has no observed dependency-ready transition in the log.
 
 ================================================================================

@@ -8,9 +8,9 @@
     "fresh_units": 0,
     "new_units": 6,
     "chain_steps": 3,
-    "chain_duration": 0.194114667,
+    "chain_duration": 0.192845519,
     "execution_duration": 0.19248448999999998,
-    "ready_to_start_delays": 0.0016301769999999965,
+    "ready_to_start_delays": 0.0003610289999999988,
     "timing_agreement_units_compared": 6,
     "timing_agreement_pct": 100.0,
     "agreement_records": [
@@ -80,7 +80,9 @@
         "duration_diff": 0.0,
         "agrees": true
       }
-    ]
+    ],
+    "chain_status": "complete",
+    "initial_interval": 0.0012691479999999977
   },
   {
     "scenario": "2_no_change_rebuild",
@@ -91,12 +93,14 @@
     "fresh_units": 6,
     "new_units": 0,
     "chain_steps": 0,
-    "chain_duration": 0.0,
-    "execution_duration": 0.0,
-    "ready_to_start_delays": 0.0,
+    "chain_duration": null,
+    "execution_duration": null,
+    "ready_to_start_delays": null,
     "timing_agreement_units_compared": 0,
-    "timing_agreement_pct": 100.0,
-    "agreement_records": []
+    "timing_agreement_pct": null,
+    "agreement_records": [],
+    "chain_status": "no_execution",
+    "initial_interval": null
   },
   {
     "scenario": "3_leaf_modification",
@@ -107,9 +111,9 @@
     "fresh_units": 5,
     "new_units": 0,
     "chain_steps": 1,
-    "chain_duration": 0.058085455999999994,
+    "chain_duration": 0.057264210999999995,
     "execution_duration": 0.057264210999999995,
-    "ready_to_start_delays": 0.000821245,
+    "ready_to_start_delays": 0,
     "timing_agreement_units_compared": 1,
     "timing_agreement_pct": 100.0,
     "agreement_records": [
@@ -124,7 +128,9 @@
         "duration_diff": 0.0,
         "agrees": true
       }
-    ]
+    ],
+    "chain_status": "complete",
+    "initial_interval": 0.000821245
   },
   {
     "scenario": "4_shared_dep_modification",
@@ -135,9 +141,9 @@
     "fresh_units": 2,
     "new_units": 0,
     "chain_steps": 3,
-    "chain_duration": 0.12842426999999998,
+    "chain_duration": 0.12757797799999998,
     "execution_duration": 0.127120027,
-    "ready_to_start_delays": 0.0013042430000000053,
+    "ready_to_start_delays": 0.00045795100000000505,
     "timing_agreement_units_compared": 4,
     "timing_agreement_pct": 100.0,
     "agreement_records": [
@@ -185,7 +191,9 @@
         "duration_diff": 0.0,
         "agrees": true
       }
-    ]
+    ],
+    "chain_status": "complete",
+    "initial_interval": 0.0008462920000000002
   },
   {
     "scenario": "5a_clean_build_j1",
@@ -196,9 +204,9 @@
     "fresh_units": 0,
     "new_units": 6,
     "chain_steps": 3,
-    "chain_duration": 0.49257346999999996,
+    "chain_duration": 0.49115829699999997,
     "execution_duration": 0.23068720999999995,
-    "ready_to_start_delays": 0.26188626000000004,
+    "ready_to_start_delays": 0.26047108700000005,
     "timing_agreement_units_compared": 6,
     "timing_agreement_pct": 100.0,
     "agreement_records": [
@@ -268,7 +276,9 @@
         "duration_diff": 0.0,
         "agrees": true
       }
-    ]
+    ],
+    "chain_status": "complete",
+    "initial_interval": 0.0014151729999999918
   },
   {
     "scenario": "5b_clean_build_j8",
@@ -279,9 +289,9 @@
     "fresh_units": 0,
     "new_units": 6,
     "chain_steps": 3,
-    "chain_duration": 0.224299739,
+    "chain_duration": 0.223190221,
     "execution_duration": 0.22272883300000001,
-    "ready_to_start_delays": 0.001570905999999997,
+    "ready_to_start_delays": 0.00046138799999999314,
     "timing_agreement_units_compared": 6,
     "timing_agreement_pct": 100.0,
     "agreement_records": [
@@ -351,6 +361,8 @@
         "duration_diff": 0.0,
         "agrees": true
       }
-    ]
+    ],
+    "chain_status": "complete",
+    "initial_interval": 0.0011095180000000038
   }
 ]

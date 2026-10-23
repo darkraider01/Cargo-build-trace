@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Incremental build critical-path and rebuild-attribution analyzer for Cargo -Zbuild-analysis logs."""
+"""Observed unblocking chains and rebuild attribution for Cargo -Zbuild-analysis logs."""
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import asdict, dataclass, field
 import json
+import math
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -30,8 +31,9 @@ class UnblockEvent:
 @dataclass
 class EffectiveSchedulingDep:
     dep_index: int
-    required_artifact: str  # "metadata" | "all"
-    is_synthetic: bool      # True if added transitively for linkable targets
+    required_artifact: str  # "metadata" | "all" | "unknown"
+    is_synthetic: bool      # Transitive candidate absent from registered direct edges
+    certainty: str = "known"  # "known" | "inferred" | "unknown"
 
 
 @dataclass
@@ -58,11 +60,11 @@ class UnitRecord:
     mode: str
     platform: str
     requested: bool
+    registered: bool = True
     features: List[str] = field(default_factory=list)
 
     # 1. Registered dependency graph (emitted in UnitRegistered)
     dependencies: List[int] = field(default_factory=list)
-    dependents: List[int] = field(default_factory=list)
 
     # 2. Inferred effective scheduling graph (metadata vs all, direct vs synthetic)
     effective_dependencies: List[EffectiveSchedulingDep] = field(default_factory=list)
@@ -89,24 +91,19 @@ class UnitRecord:
         return f"{self.name} v{self.version} ({self.target_name}:{self.target_kind})"
 
     @property
-    def requires_upstream_objects(self) -> bool:
-        """Mirrors Cargo's TargetKind::requires_upstream_objects / CrateType::requires_upstream_objects.
-
-        True for binaries, integration tests, benchmarks, cdylib, etc. that require
-        upstream object code (rlib/all) to link rather than just rmeta.
-        """
-        return self.target_kind not in ("lib", "rlib") or self.mode != "build"
+    def requires_upstream_objects(self) -> Optional[bool]:
+        """Return only what UnitRegistered preserves of Cargo's object requirement."""
+        if self.mode in ("test", "doctest"):
+            return True
+        if self.target_kind in ("bin", "test", "bench", "build-script"):
+            return True
+        # `lib` and `example` omit crate types; `check` also omits its test flag.
+        return None
 
     @property
     def duration(self) -> Optional[float]:
         if self.start_elapsed is not None and self.finish_elapsed is not None:
             return self.finish_elapsed - self.start_elapsed
-        return None
-
-    @property
-    def rmeta_duration(self) -> Optional[float]:
-        if self.start_elapsed is not None and self.rmeta_elapsed is not None:
-            return self.rmeta_elapsed - self.start_elapsed
         return None
 
 
@@ -134,10 +131,10 @@ class SessionInfo:
 class RebuildChain:
     unit_index: int
     status: str
-    chain_category: str  # "confirmed_explicit" | "local_invalidation" | "ambiguous" | "fresh_build" | "broken_reference"
+    chain_category: str
     root_cause_index: Optional[int]
     root_cause_summary: str
-    full_chain: List[int]  # [unit_index, ..., root_cause_index]
+    full_chain: List[int]  # [unit_index, ..., last inspected dependency]
     is_ambiguous: bool
     ambiguity_reason: Optional[str] = None
     stale_path: Optional[str] = None
@@ -151,15 +148,15 @@ class UnblockingChainSegment:
     target_kind: str
     phase_unblocked: str  # "rmeta" | "finish"
     start_elapsed: float
-    effective_end_elapsed: float
+    effective_end_elapsed: Optional[float]
     full_finish_elapsed: Optional[float]
-    execution_duration: float
-    ready_to_start_delay: float
+    execution_duration: Optional[float]
+    ready_to_start_delay: Optional[float]
     unblocked_by_index: Optional[int]
     unblocked_by_kind: Optional[str]
     unblock_time: Optional[float]
     is_observed_root: bool
-    is_registered_dep_of_successor: bool
+    unblocker_relationship: str  # "direct" | "inferred_synthetic" | "unknown" | "none"
     timestamp_inconsistent: bool = False
     note: str = ""
 
@@ -167,14 +164,34 @@ class UnblockingChainSegment:
 @dataclass
 class UnblockingChainResult:
     target_unit_index: int
-    target_selection_mode: str  # "explicit_flag" | "requested_target" | "latest_finish"
+    target_selection_mode: str
     segments: List[UnblockingChainSegment]
-    total_chain_duration: float
-    total_execution_duration: float
-    total_ready_to_start_delays: float
-    initial_delay: float
+    status: str
+    total_chain_duration: Optional[float]
+    total_execution_duration: Optional[float]
+    total_ready_to_start_delays: Optional[float]
+    initial_interval: Optional[float]
     diagnostics: List[str]
     unreconstructed_notes: List[str]
+
+
+def unit_index(value: Any) -> int:
+    if type(value) is not int or not 0 <= value < 2**64:
+        raise ValueError(f"Invalid unit index: {value!r}")
+    return value
+
+
+def timestamp(value: Any, *, allow_negative: bool = False) -> float:
+    if type(value) not in (int, float) or not math.isfinite(value) or (value < 0 and not allow_negative):
+        raise ValueError(f"Invalid timestamp: {value!r}")
+    return float(value)
+
+
+def finite_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"Non-finite JSON number: {value}")
+    return number
 
 
 def parse_package_id(package_id_str: str) -> Tuple[str, str]:
@@ -188,6 +205,9 @@ def parse_package_id(package_id_str: str) -> Tuple[str, str]:
             return (parts[1], parts[2])
         if len(parts) == 2:
             left, right = parts[0], parts[1]
+            if "@" in right:
+                name, version = right.rsplit("@", 1)
+                return name, version
             crate_name = left.rstrip("/").split("/")[-1]
             return (crate_name, right)
 
@@ -198,7 +218,7 @@ def parse_package_id(package_id_str: str) -> Tuple[str, str]:
 
 
 def parse_dirty_reason(cause: Optional[Dict[str, Any]], status: Optional[str]) -> ParsedDirtyReason:
-    """Accurately parses Cargo's serialized DirtyReason according to its serde schema."""
+    """Parse Cargo's flattened DirtyReason/FsStatus/StaleItem records."""
     if status == "new":
         return ParsedDirtyReason(kind="fresh-build", summary="fresh build (no previous artifact)")
     if status == "fresh":
@@ -210,8 +230,7 @@ def parse_dirty_reason(cause: Optional[Dict[str, Any]], status: Optional[str]) -
 
     # 1. Explicit dependency pointers
     if dirty_reason == "unit-dependency-info-changed":
-        unit_raw = cause.get("unit")
-        dep_idx = int(unit_raw) if unit_raw is not None else None
+        dep_idx = unit_index(cause["unit"])
         return ParsedDirtyReason(
             kind=dirty_reason,
             summary=f"dependency info changed: unit {dep_idx}",
@@ -222,8 +241,7 @@ def parse_dirty_reason(cause: Optional[Dict[str, Any]], status: Optional[str]) -
     if dirty_reason == "fs-status-outdated":
         fs_status = cause.get("fs_status")
         if fs_status in ("stale-dependency", "stale-dep-fingerprint"):
-            unit_raw = cause.get("unit")
-            dep_idx = int(unit_raw) if unit_raw is not None else None
+            dep_idx = unit_index(cause["unit"])
             return ParsedDirtyReason(
                 kind=f"fs-status-outdated:{fs_status}",
                 summary=f"dependency artifact/fingerprint stale: unit {dep_idx}",
@@ -240,9 +258,11 @@ def parse_dirty_reason(cause: Optional[Dict[str, Any]], status: Optional[str]) -
 
             summary_item = stale_item or "filesystem input"
             if stale:
-                summary = f"{summary_item} modified: {stale}"
+                summary = f"{summary_item}: {stale}"
+            elif stale_item == "changed-env":
+                summary = f"env var '{cause.get('var')}' changed"
             else:
-                summary = f"{summary_item} modified"
+                summary = summary_item
 
             return ParsedDirtyReason(
                 kind=f"fs-status-outdated:stale-item:{stale_item or 'unknown'}",
@@ -250,8 +270,8 @@ def parse_dirty_reason(cause: Optional[Dict[str, Any]], status: Optional[str]) -
                 stale_path=str(stale) if stale else None,
                 reference_path=str(reference) if reference else None,
                 stale_item=str(stale_item) if stale_item else None,
-                stale_mtime=float(stale_mtime) if stale_mtime is not None else None,
-                reference_mtime=float(ref_mtime) if ref_mtime is not None else None,
+                stale_mtime=timestamp(stale_mtime, allow_negative=True) if stale_mtime is not None else None,
+                reference_mtime=timestamp(ref_mtime, allow_negative=True) if ref_mtime is not None else None,
                 details=cause,
             )
 
@@ -306,6 +326,9 @@ class BuildAnalysisParser:
         self.parse_warnings: List[str] = []
         self.malformed_lines: List[Tuple[int, str, str]] = []
         self.unrecognized_events: List[str] = []
+        self.validation_errors: List[str] = []
+        self.inference_diagnostics: List[str] = []
+        self._session_events: Set[str] = set()
         self.total_lines = 0
 
     def parse_file(self, file_path: Path | str) -> BuildAnalysisParser:
@@ -333,8 +356,8 @@ class BuildAnalysisParser:
 
         self.total_lines += 1
         try:
-            raw_entry = json.loads(line)
-        except json.JSONDecodeError as e:
+            raw_entry = json.loads(line, parse_float=finite_json_float, parse_constant=finite_json_float)
+        except ValueError as e:
             msg = f"Invalid JSON syntax: {e}"
             self.malformed_lines.append((line_no, raw_line, msg))
             if self.strict:
@@ -358,18 +381,91 @@ class BuildAnalysisParser:
                 raise LogParseError(msg, line_no, raw_line)
             return
 
-        if self.session.run_id is None and run_id:
-            self.session.run_id = str(run_id)
-
         try:
+            if "run_id" in raw_entry:
+                if not isinstance(run_id, str) or not run_id:
+                    raise ValueError("Invalid run_id")
+                if self.session.run_id is None:
+                    self.session.run_id = run_id
+                elif run_id != self.session.run_id:
+                    raise ValueError(f"Mixed sessions: expected run_id {self.session.run_id!r}, got {run_id!r}; event excluded")
+            self._validate_event(reason, raw_entry)
             self._handle_event(reason, raw_entry)
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, TypeError, ValueError, OverflowError) as e:
             msg = f"Malformed payload for reason '{reason}': {e}"
             self.malformed_lines.append((line_no, raw_line, msg))
             if self.strict:
                 raise LogParseError(msg, line_no, raw_line) from e
 
+    def _validate_event(self, reason: str, data: Dict[str, Any]) -> None:
+        if reason == "build-started":
+            command = data.get("command", [])
+            if not isinstance(command, list) or any(not isinstance(arg, str) for arg in command):
+                raise ValueError("command must be an array of strings")
+        if reason in ("resolution-started", "resolution-finished", "unit-graph-started", "unit-graph-finished",
+                      "unit-started", "unit-rmeta-finished", "unit-finished",
+                      "unit-section-started", "unit-section-finished"):
+            data["elapsed"] = timestamp(data["elapsed"])
+        if reason in ("unit-registered", "unit-fingerprint", "unit-started", "unit-rmeta-finished",
+                      "unit-finished", "unit-section-started", "unit-section-finished"):
+            unit_index(data["index"])
+        if reason in ("unit-section-started", "unit-section-finished"):
+            if not isinstance(data["section"], str):
+                raise ValueError("section must be a string")
+        for key in ("dependencies", "unblocked"):
+            if reason not in ("unit-registered", "unit-rmeta-finished", "unit-finished") or key not in data:
+                continue
+            values = data[key]
+            if not isinstance(values, list):
+                raise ValueError(f"{key} must be an array")
+            for value in values:
+                unit_index(value)
+            if key == "unblocked" and len(set(values)) != len(values):
+                raise ValueError(f"Duplicate indices in {key}")
+        if reason == "unit-registered":
+            for key in ("package_id", "mode", "platform"):
+                if not isinstance(data[key], str) or not data[key]:
+                    raise ValueError(f"Invalid {key}")
+            for key in ("name", "kind"):
+                if not isinstance(data["target"][key], str) or not data["target"][key]:
+                    raise ValueError(f"Invalid target {key}")
+            if type(data.get("requested", False)) is not bool:
+                raise ValueError("requested must be a boolean")
+            features = data.get("features", [])
+            if not isinstance(features, list) or any(not isinstance(f, str) for f in features):
+                raise ValueError("features must be an array of strings")
+        if reason == "unit-fingerprint":
+            if data["status"] not in ("new", "fresh", "dirty"):
+                raise ValueError("Invalid fingerprint status")
+            if data.get("cause") is not None and not isinstance(data["cause"], dict):
+                raise ValueError("cause must be an object")
+            if data.get("cause") is not None and not isinstance(data["cause"].get("dirty_reason"), str):
+                raise ValueError("Missing or invalid dirty_reason")
+            if data["status"] != "dirty" and data.get("cause") is not None:
+                raise ValueError("A new or fresh fingerprint cannot have a dirty cause")
+        if reason in ("unit-started", "unit-rmeta-finished", "unit-finished"):
+            unit = self.units.get(data["index"])
+            attr = {"unit-started": "start_elapsed", "unit-rmeta-finished": "rmeta_elapsed",
+                    "unit-finished": "finish_elapsed"}[reason]
+            if unit and getattr(unit, attr) is not None:
+                raise ValueError(f"Repeated {reason} for unit {unit.index}")
+            for idx in data.get("unblocked", []):
+                target = self.units.get(idx)
+                if target and target.unblocked_by is not None:
+                    raise ValueError(f"Repeated or contradictory unblocking event for unit {idx}")
+
+    def _problem(self, message: str) -> None:
+        self.validation_errors.append(message)
+        if self.strict:
+            raise LogParseError(message, 0, "")
+
     def _handle_event(self, reason: str, data: Dict[str, Any]) -> None:
+        """Apply a validated record without coercing its indices or metadata."""
+        if reason in ("build-started", "resolution-started", "resolution-finished",
+                      "unit-graph-started", "unit-graph-finished"):
+            if reason in self._session_events:
+                raise ValueError(f"Repeated {reason}")
+            self._session_events.add(reason)
         if reason == "build-started":
             self.session.build_started_timestamp = data.get("timestamp")
             self.session.command = list(data.get("command", []))
@@ -384,29 +480,29 @@ class BuildAnalysisParser:
             self.session.workspace_root = data.get("workspace_root")
 
         elif reason == "resolution-started":
-            self.session.resolution_started = float(data.get("elapsed", 0.0))
+            self.session.resolution_started = data["elapsed"]
 
         elif reason == "resolution-finished":
-            self.session.resolution_finished = float(data.get("elapsed", 0.0))
+            self.session.resolution_finished = data["elapsed"]
 
         elif reason == "unit-graph-started":
-            self.session.unit_graph_started = float(data.get("elapsed", 0.0))
+            self.session.unit_graph_started = data["elapsed"]
 
         elif reason == "unit-graph-finished":
-            self.session.unit_graph_finished = float(data.get("elapsed", 0.0))
+            self.session.unit_graph_finished = data["elapsed"]
 
         elif reason == "unit-registered":
-            index = int(data["index"])
-            pkg_id_str = str(data.get("package_id", ""))
+            index = data["index"]
+            pkg_id_str = data["package_id"]
             name, version = parse_package_id(pkg_id_str)
-            target = data.get("target") or {}
-            target_name = target.get("name", name)
-            target_kind = target.get("kind", "lib")
-            mode = str(data.get("mode", "build"))
-            platform = str(data.get("platform", ""))
-            requested = bool(data.get("requested", False))
-            features = list(data.get("features", []))
-            deps = [int(x) for x in data.get("dependencies", [])]
+            target = data["target"]
+            target_name = target["name"]
+            target_kind = target["kind"]
+            mode = data["mode"]
+            platform = data["platform"]
+            requested = data.get("requested", False)
+            features = data.get("features", [])
+            deps = data.get("dependencies", [])
 
             unit = UnitRecord(
                 index=index,
@@ -421,27 +517,40 @@ class BuildAnalysisParser:
                 features=features,
                 dependencies=deps,
             )
+            previous = self.units.get(index)
+            if previous and previous.registered:
+                fields = ("package_id", "target_name", "target_kind", "mode", "platform",
+                          "requested", "features", "dependencies")
+                conflict = any(getattr(previous, key) != getattr(unit, key) for key in fields)
+                raise ValueError(f"{'Conflicting' if conflict else 'Duplicate'} registration for unit {index}")
+            if previous:
+                # Preserve execution events recovered before registration.
+                for key in ("status", "cause_raw", "parsed_cause", "start_elapsed", "rmeta_elapsed",
+                            "finish_elapsed", "unblocked_by", "unblocked_units", "unblocked_rmeta_units"):
+                    setattr(unit, key, getattr(previous, key))
             self.units[index] = unit
 
         elif reason == "unit-fingerprint":
-            index = int(data["index"])
+            index = data["index"]
+            parsed_cause = parse_dirty_reason(data.get("cause"), data["status"])
             unit = self._ensure_unit(index)
-            status = data.get("status")
-            unit.status = str(status) if status else None
+            if unit.status is not None:
+                raise ValueError(f"Repeated fingerprint for unit {index}")
+            unit.status = data["status"]
             unit.cause_raw = data.get("cause")
-            unit.parsed_cause = parse_dirty_reason(unit.cause_raw, unit.status)
+            unit.parsed_cause = parsed_cause
 
         elif reason == "unit-started":
-            index = int(data["index"])
+            index = data["index"]
             unit = self._ensure_unit(index)
-            unit.start_elapsed = float(data["elapsed"])
+            unit.start_elapsed = data["elapsed"]
 
         elif reason == "unit-rmeta-finished":
-            index = int(data["index"])
+            index = data["index"]
             unit = self._ensure_unit(index)
-            elapsed = float(data["elapsed"])
+            elapsed = data["elapsed"]
             unit.rmeta_elapsed = elapsed
-            unblocked = [int(x) for x in data.get("unblocked", [])]
+            unblocked = data.get("unblocked", [])
             unit.unblocked_rmeta_units = unblocked
 
             for target_idx in unblocked:
@@ -453,24 +562,23 @@ class BuildAnalysisParser:
                 )
 
         elif reason == "unit-finished":
-            index = int(data["index"])
+            index = data["index"]
             unit = self._ensure_unit(index)
-            elapsed = float(data["elapsed"])
+            elapsed = data["elapsed"]
             unit.finish_elapsed = elapsed
-            unblocked = [int(x) for x in data.get("unblocked", [])]
+            unblocked = data.get("unblocked", [])
             unit.unblocked_units = unblocked
 
             for target_idx in unblocked:
                 target_unit = self._ensure_unit(target_idx)
-                if target_unit.unblocked_by is None:
-                    target_unit.unblocked_by = UnblockEvent(
-                        unblocker_index=index,
-                        kind="finish",
-                        elapsed=elapsed,
-                    )
+                target_unit.unblocked_by = UnblockEvent(
+                    unblocker_index=index,
+                    kind="finish",
+                    elapsed=elapsed,
+                )
 
         elif reason in ("unit-section-started", "unit-section-finished"):
-            pass
+            self._ensure_unit(data["index"])
 
         else:
             self.unrecognized_events.append(reason)
@@ -487,71 +595,135 @@ class BuildAnalysisParser:
                 mode="unknown",
                 platform="unknown",
                 requested=False,
+                registered=False,
             )
             self.parse_warnings.append(f"Event referenced unit {index} before 'unit-registered'")
         return self.units[index]
 
     def _post_process(self) -> None:
-        # 1. Reverse direct dependencies
+        for start_key, end_key in (("resolution_started", "resolution_finished"),
+                                   ("unit_graph_started", "unit_graph_finished"),
+                                   ("resolution_finished", "unit_graph_started")):
+            start, end = getattr(self.session, start_key), getattr(self.session, end_key)
+            if start is not None and end is not None and end < start:
+                self._problem(f"Timestamp anomaly: {end_key} precedes {start_key}")
         for unit in self.units.values():
+            if not unit.registered:
+                self._problem(f"Missing registration for unit {unit.index}")
             for dep_idx in unit.dependencies:
                 dep_unit = self.units.get(dep_idx)
-                if dep_unit and unit.index not in dep_unit.dependents:
-                    dep_unit.dependents.append(unit.index)
+                if dep_unit is None or not dep_unit.registered:
+                    self._problem(f"Unit {unit.index} depends on unregistered unit {dep_idx}")
+            for begin, end, label in ((unit.start_elapsed, unit.finish_elapsed, "finish before start"),
+                                      (unit.start_elapsed, unit.rmeta_elapsed, "metadata before start"),
+                                      (unit.rmeta_elapsed, unit.finish_elapsed, "metadata after finish"),
+                                      (self.session.unit_graph_finished, unit.start_elapsed, "start before unit graph finished")):
+                if begin is not None and end is not None and end < begin:
+                    self._problem(f"Timestamp anomaly: unit {unit.index}: {label}")
+            if unit.start_elapsed is None and (unit.finish_elapsed is not None or unit.rmeta_elapsed is not None):
+                self._problem(f"Unit {unit.index} has completion events but no start")
+            if unit.status == "fresh" and unit.start_elapsed is not None:
+                self._problem(f"Fresh unit {unit.index} has an execution start")
+            pointer = unit.parsed_cause.explicit_dep_unit if unit.parsed_cause else None
+            if pointer is not None and (pointer not in unit.dependencies or
+                                       pointer not in self.units or not self.units[pointer].registered):
+                self._problem(f"Unit {unit.index}: broken fingerprint reference to dependency {pointer}")
+            if unit.unblocked_by and unit.start_elapsed is not None and unit.start_elapsed < unit.unblocked_by.elapsed:
+                self._problem(f"Timestamp anomaly: unit {unit.index} started before its unblocking event")
+            if unit.unblocked_by and unit.unblocked_by.kind == "rmeta":
+                dep = self.units[unit.unblocked_by.unblocker_index]
+                if (unit.mode != "build" or dep.mode != "build" or
+                        unit.requires_upstream_objects is True or dep.requires_upstream_objects is True):
+                    self._problem(f"Unit {unit.index}: metadata unblock contradicts known target/mode requirements")
 
-        # 2. Derive effective scheduling dependencies according to Cargo's JobQueue rules
+        visited: Set[int] = set()
+        active: Set[int] = set()
+
+        def visit(idx: int) -> None:
+            if idx in active:
+                self._problem(f"Dependency graph cycle at unit {idx}")
+                return
+            if idx in visited or idx not in self.units:
+                return
+            active.add(idx)
+            for dep in self.units[idx].dependencies:
+                visit(dep)
+            active.remove(idx)
+            visited.add(idx)
+
+        for idx in self.units:
+            visit(idx)
+
+        # JobQueue::enqueue seeds a map with filtered direct edges, then inserts
+        # All edges recursively, stopping at an edge already present in that map.
+        requires_objects = {u.index: u.requires_upstream_objects for u in self.units.values()}
         for unit in self.units.values():
-            effective: List[EffectiveSchedulingDep] = []
-            direct_dep_indices = set(unit.dependencies)
-
-            # Direct dependencies
+            event = unit.unblocked_by
+            if event and event.kind == "rmeta":
+                dep = self.units[event.unblocker_index]
+                if (unit.mode == dep.mode == "build" and
+                        requires_objects[unit.index] is not True and requires_objects[dep.index] is not True):
+                    # A Metadata edge can only exist when both object requirements
+                    # are false. Merely producing rmeta would not prove this.
+                    requires_objects[unit.index] = requires_objects[dep.index] = False
+        for unit in self.units.values():
+            effective: Dict[int, EffectiveSchedulingDep] = {}
+            filter_unknown = any(self.units.get(d) is None or
+                                 (self.units[d].target_kind not in ("lib", "example", "bench", "build-script")
+                                  and self.units[d].mode != "docscrape")
+                                 for d in unit.dependencies)
             for dep_idx in unit.dependencies:
-                dep_unit = self.units.get(dep_idx)
-                # In Cargo: only_requires_rmeta(parent, dep)
-                # True if parent is lib and dep is lib and both build mode
-                is_rmeta = (
-                    dep_unit is not None
-                    and not unit.requires_upstream_objects
-                    and not dep_unit.requires_upstream_objects
-                )
-                artifact = "metadata" if is_rmeta else "all"
-                effective.append(
-                    EffectiveSchedulingDep(
-                        dep_index=dep_idx,
-                        required_artifact=artifact,
-                        is_synthetic=False,
-                    )
-                )
+                dep = self.units.get(dep_idx)
+                artifact = "unknown"
+                certainty = "unknown"
+                if dep and dep.registered and (dep.target_kind in ("lib", "example", "bench", "build-script") or dep.mode == "docscrape"):
+                    if (unit.mode in ("check", "test", "doc", "doctest", "docscrape", "run-custom-build")
+                            or dep.mode in ("check", "test", "doc", "doctest", "docscrape", "run-custom-build")
+                            or requires_objects[unit.index] is True or requires_objects[dep.index] is True):
+                        artifact, certainty = "all", "known"
+                    elif (unit.mode == dep.mode == "build" and
+                          requires_objects[unit.index] is False and requires_objects[dep.index] is False):
+                        artifact, certainty = "metadata", "inferred"
+                effective[dep_idx] = EffectiveSchedulingDep(dep_idx, artifact, False, certainty)
 
-            # Synthetic transitive dependencies for linkable targets (bin, test, etc.)
-            if unit.requires_upstream_objects:
-                visited: Set[int] = set()
+            if requires_objects[unit.index] is not False:
+                certainty = "inferred" if requires_objects[unit.index] is True and not filter_unknown else "unknown"
 
                 def collect_transitive(curr_idx: int) -> None:
                     curr = self.units.get(curr_idx)
-                    if not curr:
+                    if curr is None:
                         return
                     for d in curr.dependencies:
-                        if d not in visited:
-                            visited.add(d)
-                            if d not in direct_dep_indices:
-                                effective.append(
-                                    EffectiveSchedulingDep(
-                                        dep_index=d,
-                                        required_artifact="all",
-                                        is_synthetic=True,
-                                    )
-                                )
-                            collect_transitive(d)
+                        if d in effective:
+                            if certainty == "inferred":
+                                effective[d].required_artifact = "all"
+                            continue
+                        effective[d] = EffectiveSchedulingDep(d, "all", d not in unit.dependencies, certainty)
+                        collect_transitive(d)
 
                 for dep_idx in unit.dependencies:
                     collect_transitive(dep_idx)
 
-            unit.effective_dependencies = effective
+            unit.effective_dependencies = list(effective.values())
+            if any(ed.certainty == "unknown" for ed in unit.effective_dependencies):
+                self.inference_diagnostics.append(
+                    f"Unit {unit.index}: scheduling inference uncertain; UnitRegistered omits crate types, "
+                    "check's test flag, and artifact-dependency flags. Candidate edges are not an exact queue graph."
+                )
+
+
+def classify_unblocking_edge(unit: UnitRecord, unblocker_index: int) -> str:
+    """Classify the predecessor of this unit, independently of chain position."""
+    if unblocker_index in unit.dependencies:
+        return "direct"
+    if any(dep.dep_index == unblocker_index and dep.is_synthetic and dep.certainty == "inferred"
+           for dep in unit.effective_dependencies):
+        return "inferred_synthetic"
+    return "unknown"
 
 
 class CriticalPathAnalyzer:
-    """Performs critical-path reconstruction, rebuild-reason tracing, and gap attribution."""
+    """Reconstructs observed unblocking chains and explicit rebuild causes."""
 
     def __init__(self, parser: BuildAnalysisParser):
         self.parser = parser
@@ -595,12 +767,14 @@ class CriticalPathAnalyzer:
             else:
                 root_summary = unit.parsed_cause.summary if unit.parsed_cause else "dirty"
                 stale_path = unit.parsed_cause.stale_path if unit.parsed_cause else None
+            if category == "unresolved_upstream":
+                root_summary = "explicit dependency change; dependency is fresh here, earlier cause unavailable"
 
             results[index] = RebuildChain(
                 unit_index=index,
                 status="dirty",
                 chain_category=category,
-                root_cause_index=root_idx,
+                root_cause_index=None if is_ambiguous else root_idx,
                 root_cause_summary=root_summary,
                 full_chain=chain,
                 is_ambiguous=is_ambiguous,
@@ -640,7 +814,7 @@ class CriticalPathAnalyzer:
                 )
 
             next_unit = self.units.get(dep_ptr)
-            if next_unit is None:
+            if next_unit is None or not next_unit.registered:
                 return (
                     chain,
                     True,
@@ -648,6 +822,15 @@ class CriticalPathAnalyzer:
                     current.index,
                     "broken_reference",
                 )
+            if dep_ptr not in current.dependencies:
+                return (chain, True,
+                        f"Explicit cause from unit {current.index} points to unit {dep_ptr}, "
+                        "which is not a registered dependency",
+                        current.index, "broken_reference")
+            if next_unit.status == "fresh":
+                return (chain + [dep_ptr], True,
+                        f"Dependency {dep_ptr} is fresh in this session; its earlier invalidation is not recorded here",
+                        dep_ptr, "unresolved_upstream")
 
             current = next_unit
 
@@ -661,7 +844,25 @@ class CriticalPathAnalyzer:
             if self.units.get(d) and self.units[d].status in ("dirty", "new")
         ]
 
-        if cause_kind in ("unspecified", "nothing-obvious", "stale", "forced"):
+        if cause_kind == "forced":
+            return (chain, True, "Forced rebuild; ordinary invalidation root is not established",
+                    terminal_root.index, "forced_rebuild")
+        if cause_kind == "fresh-build":
+            return (chain, False, None, terminal_root.index, "fresh_build")
+
+        local_kinds = (
+            "rustc-changed", "features-changed", "declared-features-changed", "target-configuration-changed",
+            "path-to-source-changed", "profile-configuration-changed", "rustflags-changed", "config-settings-changed",
+            "compile-kind-changed", "local-lengths-changed", "precalculated-components-changed",
+            "checksum-use-changed", "fingerprint-method-changed", "dep-info-output-changed",
+            "rerun-if-changed-output-file-changed", "rerun-if-changed-output-paths-changed", "env-vars-changed",
+            "env-var-changed", "local-fingerprint-type-changed", "number-of-dependencies-changed",
+            "unit-dependency-name-changed",
+        )
+        stale_item = root_cause.stale_item if root_cause else None
+        known_stale = stale_item in ("missing-file", "unable-to-read-file", "failed-to-read-metadata", "file-size-changed",
+                                    "changed-file", "changed-checksum", "missing-checksum", "changed-env")
+        if cause_kind not in local_kinds and not known_stale:
             if dirty_deps:
                 dep_names = [self.units[d].display_name for d in dirty_deps]
                 return (
@@ -672,7 +873,7 @@ class CriticalPathAnalyzer:
                     terminal_root.index,
                     "ambiguous",
                 )
-            return (chain, False, None, terminal_root.index, "unresolved_local")
+            return (chain, True, f"No specific invalidation root: {cause_kind}", terminal_root.index, "unresolved_local")
 
         # Explicit chain terminated at a known specific local invalidation cause
         category = "confirmed_explicit" if len(chain) > 1 else "local_invalidation"
@@ -686,194 +887,134 @@ class CriticalPathAnalyzer:
         Traces backward along recorded unblocking events from the selected target unit,
         separating unit execution durations from ready-to-start scheduler delays.
         """
-        started_units = [u for u in self.units.values() if u.start_elapsed is not None]
-        diagnostics: List[str] = []
-        unreconstructed_notes: List[str] = []
+        started = [u for u in self.units.values() if u.start_elapsed is not None]
+        requested = [u for u in self.units.values() if u.requested]
+        diagnostics = list(self.parser.validation_errors)
+        notes: List[str] = []
+        if len(requested) > 1:
+            notes.append("Automatic selection uses the latest completed requested target; other requested work is not represented.")
+        unfinished = [u.index for u in started if u.finish_elapsed is None]
+        if unfinished:
+            notes.append(f"Units with no full finish event: {unfinished}. Session completion is not established.")
+        incomplete_requested = [u.index for u in requested if u.status != "fresh" and u.finish_elapsed is None]
+        if incomplete_requested:
+            notes.append(f"Requested targets without completed execution: {incomplete_requested}.")
 
-        if not started_units:
-            return UnblockingChainResult(
-                target_unit_index=-1,
-                target_selection_mode="none",
-                segments=[],
-                total_chain_duration=0.0,
-                total_execution_duration=0.0,
-                total_ready_to_start_delays=0.0,
-                initial_delay=0.0,
-                diagnostics=["No units recorded start events in this log session."],
-                unreconstructed_notes=["Session contains no executed units."],
-            )
-
-        # 1. Target unit selection
         if target_unit_index is not None:
-            if target_unit_index not in self.units:
+            if target_unit_index not in self.units or not self.units[target_unit_index].registered:
                 raise ValueError(f"Requested target unit {target_unit_index} does not exist in registry")
-            target_unit = self.units[target_unit_index]
-            target_mode = "explicit_flag"
-            if target_unit.start_elapsed is None:
-                diagnostics.append(f"Target unit {target_unit_index} was registered but never started.")
+            target = self.units[target_unit_index]
+            selection = "explicit_flag"
         else:
-            # Check for explicitly requested units that finished
-            finished_requested = [
-                u for u in started_units if u.requested and u.finish_elapsed is not None
-            ]
-            if finished_requested:
-                target_unit = max(finished_requested, key=lambda u: u.finish_elapsed or 0.0)
-                target_mode = "requested_target"
+            completed_requested = [u for u in requested if u.start_elapsed is not None and u.finish_elapsed is not None]
+            completed = [u for u in started if u.finish_elapsed is not None]
+            pending_requested = [u for u in requested if u.status != "fresh"]
+            if completed_requested:
+                target = max(completed_requested, key=lambda u: (u.finish_elapsed, u.index))
+                selection = "requested_target"
+            elif pending_requested:
+                target = max(pending_requested, key=lambda u: (u.start_elapsed if u.start_elapsed is not None else -1, u.index))
+                selection = "requested_incomplete"
+            elif completed:
+                target = max(completed, key=lambda u: (u.finish_elapsed, u.index))
+                selection = "latest_finish"
+            elif started:
+                target = max(started, key=lambda u: (u.start_elapsed, u.index))
+                selection = "latest_start"
             else:
-                finished_units = [u for u in started_units if u.finish_elapsed is not None]
-                if finished_units:
-                    target_unit = max(finished_units, key=lambda u: u.finish_elapsed or 0.0)
-                    target_mode = "latest_finish"
-                else:
-                    target_unit = max(started_units, key=lambda u: u.start_elapsed or 0.0)
-                    target_mode = "latest_start"
+                target = None
+                selection = "none"
+        if target and target.finish_elapsed is not None:
+            if any(u.finish_elapsed is not None and u.finish_elapsed > target.finish_elapsed for u in self.units.values()):
+                notes.append("Other units finished after the selected target. This chain does not cover all Cargo work.")
+        if target and target.start_elapsed is None:
+            diagnostics.append(f"Target unit {target.index} was registered but never started (status: {target.status or 'unknown'}).")
+        if target is None:
+            diagnostics.append("No units recorded start events in this log session; Cargo wall-clock time is not zero.")
 
-        # 2. Backward walk along recorded unblock events
         segments_rev: List[UnblockingChainSegment] = []
         visited: Set[int] = set()
-
-        curr_unit: Optional[UnitRecord] = target_unit
-        phase_required = "finish"
-        queue_start = self.session.unit_graph_finished or 0.0
-
-        while curr_unit is not None:
-            visited.add(curr_unit.index)
-
-            start = curr_unit.start_elapsed
+        current = target
+        phase = "finish"
+        incomplete = bool(self.parser.malformed_lines) or (not started and any(u.status != "fresh" for u in self.units.values()))
+        while current is not None:
+            if current.index in visited:
+                diagnostics.append(f"Cycle in unblocking chain at unit {current.index}")
+                incomplete = True
+                break
+            visited.add(current.index)
+            start = current.start_elapsed
+            end = current.rmeta_elapsed if phase == "rmeta" else current.finish_elapsed
             if start is None:
-                diagnostics.append(f"Unit {curr_unit.index} on unblocking chain has no start timestamp.")
+                if current is not target or current.status != "fresh":
+                    incomplete = True
+                diagnostics.append(f"Unit {current.index} on unblocking chain has no start timestamp.")
                 break
-
-            full_finish = curr_unit.finish_elapsed
-
-            if phase_required == "rmeta" and curr_unit.rmeta_elapsed is not None:
-                effective_end = curr_unit.rmeta_elapsed
-            else:
-                effective_end = curr_unit.finish_elapsed if curr_unit.finish_elapsed is not None else start
-
-            exec_duration = effective_end - start
-            if exec_duration < 0.0:
-                diagnostics.append(
-                    f"Timestamp anomaly: Unit {curr_unit.index} finish/rmeta ({effective_end:.4f}s) "
-                    f"precedes start ({start:.4f}s)."
-                )
-
-            unblock_ev = curr_unit.unblocked_by
-            timestamp_inconsistent = False
-
-            if unblock_ev is not None:
-                unblock_idx = unblock_ev.unblocker_index
-                unblock_kind = unblock_ev.kind
-                unblock_time = unblock_ev.elapsed
-                ready_delay = start - unblock_time
-                is_root = False
-                note = ""
-
-                if ready_delay < -0.0001:
-                    timestamp_inconsistent = True
-                    diagnostics.append(
-                        f"Timestamp anomaly: Unit {curr_unit.index} started at {start:.4f}s, "
-                        f"before unblocking event at {unblock_time:.4f}s."
-                    )
-            else:
-                is_root = True
-                unblock_idx = None
-                unblock_kind = None
-                unblock_time = None
-                ready_delay = start - queue_start
-
-                if not curr_unit.dependencies:
-                    note = "DAG root (no registered dependencies)"
+            if end is None:
+                incomplete = True
+                diagnostics.append(f"Unit {current.index} on unblocking chain has no {phase} completion timestamp; duration unknown.")
+            execution = end - start if end is not None else None
+            event = current.unblocked_by
+            delay = start - event.elapsed if event else None
+            inconsistent = (execution is not None and execution < 0) or (delay is not None and delay < 0)
+            note = ""
+            if event is None:
+                if not current.dependencies:
+                    note = "No registered dependencies; readiness start is not logged"
+                elif all(self.units.get(d) and self.units[d].status == "fresh" for d in current.dependencies):
+                    note = "Only fresh dependencies; Cargo omits their unblock events, readiness start unknown"
+                    notes.append(f"Unit {current.index}: fresh dependencies have no observed readiness transition.")
                 else:
-                    fresh_deps = [
-                        d for d in curr_unit.dependencies
-                        if self.units.get(d) and self.units[d].status == "fresh"
-                    ]
-                    if len(fresh_deps) == len(curr_unit.dependencies):
-                        note = "Unblocked by fresh dependencies (Cargo omits unblock events for fresh units)"
-                        unreconstructed_notes.append(
-                            f"Unit {curr_unit.display_name} (index {curr_unit.index}) was unblocked by "
-                            f"fresh dependency units {[self.units[d].name for d in fresh_deps]}, but Cargo's "
-                            f"event stream omits unblock events for fresh units."
-                        )
-                    else:
-                        note = "Missing unblocking event in log (unrecorded predecessor)"
-                        unreconstructed_notes.append(
-                            f"Unit {curr_unit.display_name} (index {curr_unit.index}) had dependencies "
-                            f"but no unblocking event was logged."
-                        )
-
-            # Check if this unit is a direct registered dependency of the unit that was unblocked
-            is_registered = False
-            if segments_rev:
-                successor_idx = segments_rev[-1].unit_index
-                successor = self.units.get(successor_idx)
-                if successor and curr_unit.index in successor.dependencies:
-                    is_registered = True
-
-            seg = UnblockingChainSegment(
-                step=0,
-                unit_index=curr_unit.index,
-                unit_name=curr_unit.display_name,
-                target_kind=curr_unit.target_kind,
-                phase_unblocked=phase_required,
-                start_elapsed=start,
-                effective_end_elapsed=effective_end,
-                full_finish_elapsed=full_finish,
-                execution_duration=exec_duration,
-                ready_to_start_delay=ready_delay,
-                unblocked_by_index=unblock_idx,
-                unblocked_by_kind=unblock_kind,
-                unblock_time=unblock_time,
-                is_observed_root=is_root,
-                is_registered_dep_of_successor=is_registered,
-                timestamp_inconsistent=timestamp_inconsistent,
-                note=note,
-            )
-            segments_rev.append(seg)
-
-            if unblock_ev is None:
+                    note = "Missing unblocking event in log (unrecorded predecessor)"
+                    notes.append(f"Unit {current.index}: predecessor could not be reconstructed.")
+                    incomplete = True
+            segments_rev.append(UnblockingChainSegment(
+                step=0, unit_index=current.index, unit_name=current.display_name,
+                target_kind=current.target_kind, phase_unblocked=phase,
+                start_elapsed=start, effective_end_elapsed=end, full_finish_elapsed=current.finish_elapsed,
+                execution_duration=execution, ready_to_start_delay=delay,
+                unblocked_by_index=event.unblocker_index if event else None,
+                unblocked_by_kind=event.kind if event else None,
+                unblock_time=event.elapsed if event else None, is_observed_root=event is None,
+                unblocker_relationship=classify_unblocking_edge(current, event.unblocker_index) if event else "none",
+                timestamp_inconsistent=inconsistent, note=note,
+            ))
+            if event is None:
                 break
-
-            prev_idx = unblock_ev.unblocker_index
-            if prev_idx in visited:
-                diagnostics.append(f"Cycle in unblocking chain detected at unit index {prev_idx}")
+            current = self.units.get(event.unblocker_index)
+            if current is None or not current.registered:
+                diagnostics.append(f"Unblock event references unregistered unit {event.unblocker_index}")
+                incomplete = True
                 break
-
-            prev_unit = self.units.get(prev_idx)
-            if prev_unit is None:
-                diagnostics.append(f"Unblock event referenced unregistered unit index {prev_idx}")
-                break
-
-            phase_required = unblock_ev.kind
-            curr_unit = prev_unit
+            phase = event.kind
 
         segments = list(reversed(segments_rev))
-        for i, s in enumerate(segments, start=1):
-            s.step = i
-
-        total_exec = sum(s.execution_duration for s in segments)
-        total_delays = sum(s.ready_to_start_delay for s in segments)
-        initial_delay = segments[0].ready_to_start_delay if segments else 0.0
-
-        if segments:
-            first_start = segments[0].start_elapsed
-            last_end = segments[-1].effective_end_elapsed
-            total_duration = (last_end - first_start) + initial_delay
+        for i, segment in enumerate(segments, start=1):
+            segment.step = i
+        if self.parser.validation_errors:
+            status = "inconsistent"
+        elif incomplete:
+            status = "incomplete"
+        elif not segments:
+            status = "not_executed" if target else "no_execution"
         else:
-            total_duration = 0.0
-
+            status = "complete"
+        reliable = status == "complete"
+        initial = None
+        if segments and self.session.unit_graph_finished is not None:
+            initial = segments[0].start_elapsed - self.session.unit_graph_finished
         return UnblockingChainResult(
-            target_unit_index=target_unit.index,
-            target_selection_mode=target_mode,
-            segments=segments,
-            total_chain_duration=total_duration,
-            total_execution_duration=total_exec,
-            total_ready_to_start_delays=total_delays,
-            initial_delay=initial_delay,
-            diagnostics=diagnostics,
-            unreconstructed_notes=unreconstructed_notes,
+            target_unit_index=target.index if target else -1, target_selection_mode=selection,
+            status=status, segments=segments,
+            total_chain_duration=segments[-1].effective_end_elapsed - segments[0].start_elapsed if reliable else None,
+            total_execution_duration=sum(s.execution_duration for s in segments) if reliable else None,
+            total_ready_to_start_delays=sum(s.ready_to_start_delay for s in segments if s.ready_to_start_delay is not None) if reliable else None,
+            initial_interval=initial, diagnostics=diagnostics, unreconstructed_notes=notes,
         )
+
+
+def format_seconds(value: Optional[float]) -> str:
+    return f"{value:.4f}s" if value is not None else "unknown"
 
 
 def format_text_report(
@@ -888,7 +1029,7 @@ def format_text_report(
 
     lines: List[str] = []
     lines.append("=" * 80)
-    lines.append("CARGO INCREMENTAL BUILD CRITICAL-PATH ANALYSIS REPORT")
+    lines.append("CARGO BUILD TRACE: OBSERVED UNBLOCKING CHAIN AND REBUILD CAUSES")
     lines.append("=" * 80)
     lines.append("")
 
@@ -917,7 +1058,7 @@ def format_text_report(
     started_count = sum(1 for u in units.values() if u.start_elapsed is not None)
 
     lines.append("## 2. UNITS SUMMARY")
-    lines.append(f"  Total Registered Units: {len(units)}")
+    lines.append(f"  Total Registered Units: {sum(u.registered for u in units.values())}")
     lines.append(f"  - Fresh (Cached):       {fresh_count}")
     lines.append(f"  - Dirty (Rebuilding):   {dirty_count}")
     lines.append(f"  - New (First Build):    {new_count}")
@@ -949,7 +1090,7 @@ def format_text_report(
     for idx, u in sorted(units.items()):
         reg_deps = [f"unit {d} ({units[d].name})" for d in u.dependencies if d in units]
         eff_deps = [
-            f"unit {ed.dep_index} ({units[ed.dep_index].name}, {ed.required_artifact}{', synthetic' if ed.is_synthetic else ''})"
+            f"unit {ed.dep_index} ({units[ed.dep_index].name}, {ed.required_artifact}, {ed.certainty}{', synthetic' if ed.is_synthetic else ''})"
             for ed in u.effective_dependencies if ed.dep_index in units
         ]
         unblock_str = (
@@ -960,7 +1101,7 @@ def format_text_report(
 
         lines.append(f"  * Unit {idx} [{u.display_name}]:")
         lines.append(f"      Registered Direct Dependencies:   {', '.join(reg_deps) if reg_deps else 'none'}")
-        lines.append(f"      Effective Scheduling Prerequisites: {', '.join(eff_deps) if eff_deps else 'none'}")
+        lines.append(f"      Inferred Scheduling Prerequisites: {', '.join(eff_deps) if eff_deps else 'none'}")
         lines.append(f"      Recorded Dynamic Unblocker:        {unblock_str}")
     lines.append("")
 
@@ -977,15 +1118,16 @@ def format_text_report(
             flag = f" [{chain.chain_category.upper()}]"
             lines.append(f"  * Unit {idx} [{unit.display_name}] status={chain.status}{flag}:")
             lines.append(f"      Causal Chain: {chain_str}")
-            lines.append(f"      Root Invalidation Cause: {root_desc}")
-            if chain.stale_path:
-                lines.append(f"      Invalidating File Path:  {chain.stale_path}")
+            reason_label = "Terminal Reason (root unknown)" if chain.is_ambiguous else "Root Invalidation Cause"
+            lines.append(f"      {reason_label}: {root_desc}")
             if chain.is_ambiguous and chain.ambiguity_reason:
                 lines.append(f"      Ambiguity Diagnostic:    {chain.ambiguity_reason}")
     lines.append("")
 
     # 5. Observed Dependency-Unblocking Chain
     lines.append("## 5. OBSERVED DEPENDENCY-UNBLOCKING CHAIN")
+    lines.append(f"  Chain status: {chain_result.status}")
+    lines.append(f"  Target index: {chain_result.target_unit_index}, selection: {chain_result.target_selection_mode}")
     if not chain_result.segments:
         lines.append("  No unblocking chain reconstructed.")
     else:
@@ -1001,16 +1143,16 @@ def format_text_report(
 
         for s in chain_result.segments:
             if s.unblocked_by_index is not None:
-                dep_flag = " (direct)" if s.is_registered_dep_of_successor else " (synthetic/indirect)"
+                dep_flag = f" ({s.unblocker_relationship.replace('_', ' ')})"
                 unblock_str = f"unit {s.unblocked_by_index} ({s.unblocked_by_kind} @ {s.unblock_time:.3f}s){dep_flag}"
             else:
-                unblock_str = "DAG root / initial"
+                unblock_str = "none observed; readiness unknown"
 
             warn_flag = "!" if s.timestamp_inconsistent else " "
             lines.append(
                 f" {warn_flag}{s.step:<4} {s.unit_name[:26]:<28} {s.phase_unblocked:<8} "
-                f"{s.start_elapsed:<10.3f} {s.effective_end_elapsed:<10.3f} "
-                f"{s.execution_duration:<10.3f}s {s.ready_to_start_delay:<11.3f}s {unblock_str}"
+                f"{s.start_elapsed:<10.3f} {format_seconds(s.effective_end_elapsed):<10} "
+                f"{format_seconds(s.execution_duration):<11} {format_seconds(s.ready_to_start_delay):<12} {unblock_str}"
             )
             if s.note:
                 lines.append(f"        Note: {s.note}")
@@ -1019,19 +1161,19 @@ def format_text_report(
 
     # 6. Timing Breakdown
     lines.append("## 6. TIMING AND CHAIN BUDGET")
-    total_dur = max(0.0001, chain_result.total_chain_duration)
-    lines.append(f"  Total Observed Chain Duration:       {chain_result.total_chain_duration:.4f}s")
-    lines.append(f"  - Active Unit Execution on Chain:    {chain_result.total_execution_duration:.4f}s "
-                 f"({chain_result.total_execution_duration / total_dur * 100:.1f}%)")
-    lines.append(f"  - Cumulative Ready-to-Start Delays:  {chain_result.total_ready_to_start_delays:.4f}s "
-                 f"({chain_result.total_ready_to_start_delays / total_dur * 100:.1f}%)")
-    lines.append(f"    (Initial Queue Startup Delay:      {chain_result.initial_delay:.4f}s)")
+    lines.append(f"  Observed Chain Span:                {format_seconds(chain_result.total_chain_duration)}")
+    lines.append(f"  - Active Unit Execution on Chain:   {format_seconds(chain_result.total_execution_duration)}")
+    measured_gaps = sum(s.ready_to_start_delay is not None for s in chain_result.segments)
+    lines.append(f"  - Measured Ready-to-Start Gaps:      {format_seconds(chain_result.total_ready_to_start_delays)} ({measured_gaps} observed)")
+    lines.append(f"  Initial Graph-to-Start Interval:    {format_seconds(chain_result.initial_interval)} (readiness unknown)")
+    lines.append("  Chain span begins at its first observed start, excluding the initial interval.")
+    lines.append("  Unavailable totals are unknown; known segment timestamps remain above.")
     lines.append("")
     lines.append("  Note on Ready-to-Start Delays:")
     lines.append("    Delays between unblocking and execution start conflate jobserver token contention (-j),")
     lines.append("    job queue priority ordering, and OS process fork/exec overhead. Cargo does not log")
     lines.append("    token acquire/release events, so this interval cannot be definitively split into")
-    lines.append("    dependency waiting vs worker saturation without additional instrumentation.")
+    lines.append("    token waiting, dispatch, and event-loop overhead without additional instrumentation.")
     lines.append("")
 
     # 7. Unreconstructed / Missing Information
@@ -1042,9 +1184,12 @@ def format_text_report(
         all_unreconstructed.append(
             f"Parser encountered {len(parser.malformed_lines)} malformed/unparseable log lines."
         )
+        all_unreconstructed.extend(f"Line {n}: {message}" for n, _, message in parser.malformed_lines)
+    all_unreconstructed.extend(parser.parse_warnings)
+    all_unreconstructed.extend(parser.inference_diagnostics)
     if parser.unrecognized_events:
         all_unreconstructed.append(
-            f"Unrecognized event reasons ignored: {list(set(parser.unrecognized_events))}"
+            f"Unrecognized event reasons ignored: {sorted(set(parser.unrecognized_events))}"
         )
     if chain_result.diagnostics:
         all_unreconstructed.extend(chain_result.diagnostics)
@@ -1056,7 +1201,7 @@ def format_text_report(
         if u.start_elapsed is not None and u.dependencies and u.unblocked_by is None:
             all_unreconstructed.append(
                 f"Unit {u.display_name} (index {u.index}) started at {u.start_elapsed:.3f}s but has "
-                f"no unblocking event in the log. Upstream dependencies were omitted from unblocking telemetry."
+                "no observed dependency-ready transition in the log."
             )
 
     if fresh_count > 0:
@@ -1070,11 +1215,8 @@ def format_text_report(
         "is not logged by Cargo, meaning scheduler delays cannot be definitively assigned to job token starvation vs OS delay."
     )
 
-    if not all_unreconstructed:
-        lines.append("  None. All events and relationships were fully reconstructed.")
-    else:
-        for item in sorted(set(all_unreconstructed)):
-            lines.append(f"  * {item}")
+    for item in sorted(set(all_unreconstructed)):
+        lines.append(f"  * {item}")
 
     lines.append("")
     lines.append("=" * 80)
@@ -1088,13 +1230,16 @@ def serialize_analysis(
 ) -> Dict[str, Any]:
     """Serializes analysis output into clean, structured, JSON-safe dictionaries."""
     return {
+        "input_valid": not (parser.malformed_lines or parser.validation_errors),
         "session": asdict(parser.session),
         "units": {str(k): asdict(v) for k, v in parser.units.items()},
         "rebuild_chains": {str(k): asdict(v) for k, v in rebuild_chains.items()},
         "unblocking_chain": asdict(chain_result),
         "diagnostics": {
-            "malformed_lines": parser.malformed_lines,
+            "malformed_lines": [list(record) for record in parser.malformed_lines],
             "parse_warnings": parser.parse_warnings,
+            "validation_errors": parser.validation_errors,
+            "inference_diagnostics": parser.inference_diagnostics,
             "unrecognized_events": parser.unrecognized_events,
             "chain_diagnostics": chain_result.diagnostics,
             "unreconstructed_notes": chain_result.unreconstructed_notes,
@@ -1104,17 +1249,17 @@ def serialize_analysis(
 
 def main() -> None:
     arg_parser = argparse.ArgumentParser(
-        description="Analyze Cargo -Zbuild-analysis logs for critical path and rebuild attribution."
+        description="Analyze Cargo -Zbuild-analysis logs for observed unblocking chains and rebuild attribution."
     )
     arg_parser.add_argument("log_file", help="Path to Cargo JSONL build analysis log file (or '-' for stdin)")
     arg_parser.add_argument(
         "--format", choices=["text", "json"], default="text", help="Output report format (default: text)"
     )
     arg_parser.add_argument(
-        "--target", type=int, default=None, help="Specific UnitIndex to trace critical path for (default: terminal target)"
+        "--target", type=int, default=None, help="Specific UnitIndex to trace (default: latest completed requested target)"
     )
     arg_parser.add_argument(
-        "--strict", action="store_true", help="Fail immediately on malformed JSONL lines"
+        "--strict", action="store_true", help="Reject malformed records, mixed sessions, and inconsistent graphs or timestamps"
     )
 
     args = arg_parser.parse_args()
@@ -1131,7 +1276,7 @@ def main() -> None:
 
     if args.format == "json":
         data = serialize_analysis(parser, rebuild_chains, crit_path)
-        print(json.dumps(data, indent=2))
+        print(json.dumps(data, indent=2, allow_nan=False))
     else:
         report = format_text_report(parser, analyzer, rebuild_chains, crit_path)
         print(report)

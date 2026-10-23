@@ -7,10 +7,12 @@
   "fresh_units": 6,
   "new_units": 0,
   "chain_steps": 0,
-  "chain_duration": 0.0,
-  "execution_duration": 0.0,
-  "ready_to_start_delays": 0.0,
+  "chain_duration": null,
+  "execution_duration": null,
+  "ready_to_start_delays": null,
   "timing_agreement_units_compared": 0,
-  "timing_agreement_pct": 100.0,
-  "agreement_records": []
+  "timing_agreement_pct": null,
+  "agreement_records": [],
+  "chain_status": "no_execution",
+  "initial_interval": null
 }

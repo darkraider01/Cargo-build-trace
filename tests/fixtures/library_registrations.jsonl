@@ -1,0 +1,4 @@
+{"reason":"unit-registered","package_id":"path+file:///workspace/base#0.1.0","target":{"name":"base","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu","index":0,"requested":true}
+{"reason":"unit-registered","package_id":"path+file:///workspace/cdylib_output#0.1.0","target":{"name":"cdylib_output","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu","index":1,"requested":true,"dependencies":[0]}
+{"reason":"unit-registered","package_id":"path+file:///workspace/rlib_output#0.1.0","target":{"name":"rlib_output","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu","index":2,"requested":true,"dependencies":[0]}
+{"reason":"unit-registered","package_id":"path+file:///workspace/staticlib_output#0.1.0","target":{"name":"staticlib_output","kind":"lib"},"mode":"build","platform":"x86_64-unknown-linux-gnu","index":3,"requested":true,"dependencies":[0]}
